@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+if(@MLVM_HAS_OPTILISP@)
+  include(CMakeFindDependencyMacro)
+  find_dependency(Threads)
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/MLVMTargets.cmake")
+if(TARGET MLVM::CephyrLibc)
+  set(MLVM_CEPHYR_SYSROOT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/mlvm/cephyr-libc")
+else()
+  set(MLVM_CEPHYR_SYSROOT "@MLVM_CEPHYR_SYSROOT@")
+endif()
+check_required_components(MLVM)
