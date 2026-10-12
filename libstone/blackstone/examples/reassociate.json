@@ -1,0 +1,10 @@
+{
+  "root": "sum",
+  "nodes": {
+    "x": {"kind": "input", "type": {"width": 8, "signed": true}, "pure": true, "total": true},
+    "three": {"kind": "literal", "type": {"width": 8, "signed": true}, "value": "3"},
+    "four": {"kind": "literal", "type": {"width": 8, "signed": true}, "value": "4"},
+    "inner": {"kind": "binary", "type": {"width": 8, "signed": true}, "op": "plus", "args": ["x", "three"]},
+    "sum": {"kind": "binary", "type": {"width": 8, "signed": true}, "op": "plus", "args": ["inner", "four"], "provenance": "demo:1"}
+  }
+}

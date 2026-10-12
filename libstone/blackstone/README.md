@@ -1,159 +1,176 @@
-# Blackstone
+# Blackstone v0
 
-A declarative database of compiler and interpreter optimization kernels.
+Blackstone specifies guarded compiler rewrites in `.bst` files. This initial
+implementation includes a **native dparser frontend**, source-located AST and
+validation, a typed reference HIR adapter, inheritance-driven integer folding,
+and a deterministic fixed-point rewrite driver. The acceptance kernel is the
+actual `kernels/AlgebraicSimplification.bst`: 16 local rules plus the inherited
+built-in `ConstantFolding` entry.
 
-Blackstone catalogs individual optimization techniques as declarative, machine-readable
-kernel specifications written in **Optilisp**, Blackstone's S-expression language. Each
-kernel describes one optimization, its applicability conditions, required analyses and
-capabilities, its correctness obligations, and its intended transformation.
+The [extended catalog](kernels/CATALOG.md) adds **84 kernels** across expressions,
+statements, memory, control flow, loops and polyhedra. It contains 85 kernels and
+100 local rules in total. Expression rules execute on the reference adapter;
+structured-host rules require their registered host proofs and descriptor semantics.
 
-Blackstone is a member of the `libstone` project family. It is **not** a compiler,
-interpreter, or optimization executor — it is the kernel database and its tooling.
+## Build and run
 
-## Repository layout
+Requirements: C compiler, CMake 3.20+, and Python 3.9+. No Python packages are
+required. dparser is compiled directly from `../../third_party/dparser`; its
+upstream build expects a differently named source file, so this build explicitly
+uses the supplied `write_tables.c`. Grammar tables are generated in the build
+directory, not checked into the source tree.
 
-```text
-blackstone/
-├── AGENTS.md                  # Normative specification and implementation guide
-├── README.md                  # This file
-├── docs/                      # Architecture, schema, and language documentation
-├── schemas/                   # JSON Schemas for kernel, capability, analysis, monoid
-├── kernels/                   # 150 kernel definitions, organized by stage → category
-│   ├── hir/                   #   High-level IR kernels (44)
-│   ├── mir/                   #   Mid-level IR kernels (60)
-│   └── lir/                   #   Low-level IR kernels (46)
-├── optilisp/                  # Optilisp language implementation (Python 3, stdlib only)
-│   ├── src/optilisp/          #   Reader, semantic analyzer, validator, query engine
-│   ├── loader/                #   C11 reader/local validator and C++17 ownership wrapper
-│   ├── stdlib/                #   Capability, analysis, and monoid registries
-│   └── examples/              #   Example Optilisp definitions
-├── tools/                     # Command-line tools
-│   ├── validate-kernels       #   Run all six validation layers
-│   ├── inspect-kernel         #   Display one kernel's metadata
-│   ├── query-kernels          #   Query the kernel database
-│   └── check-monoid-laws      #   Verify monoid laws for executable carriers
-└── tests/                     # Test suite (parser, schema, semantics, validation)
-```
-
-## Kernel organization
-
-Kernels are organized by **attributes** in directories:
-
-- **First attribute: IR stage** — `hir/`, `mir/`, `lir/`
-- **Second attribute: optimization category** — e.g., `constant-folding/`, `loop-optimization/`
-
-Each kernel file contains one `define-kernel` form with a stable identifier following the
-convention `blackstone.<stage>.<family>.<operation>`.
-
-## Quick start
+From `libstone/blackstone`:
 
 ```sh
-# Validate the entire kernel database (all six layers)
-./tools/validate-kernels
+cmake -S . -B build
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 
-# Query the database
-./tools/query-kernels --stage mir --category loop-optimization
-./tools/query-kernels --summary
-
-# Inspect a single kernel
-./tools/inspect-kernel blackstone.hir.constant-folding.integer-add
-
-# Verify monoid laws
-./tools/check-monoid-laws
-
-# Run the test suite
-make test
+export BLACKSTONE_PARSER="$PWD/build/blackstone-parser"
+export PYTHONPATH="$PWD/python"
+python3 -m blackstone parse kernels/AlgebraicSimplification.bst
+python3 -m blackstone check kernels/AlgebraicSimplification.bst
+python3 -m blackstone check kernels
+python3 -m blackstone apply kernels/AlgebraicSimplification.bst \
+  examples/reassociate.json --trace
 ```
 
-## Optilisp language
+`BLACKSTONE_DPARSER_DIR` is a CMake cache override for the supplied dependency.
+`BLACKSTONE_PARSER` selects the built native executable; if omitted, the frontend
+looks for `build/blackstone-parser` beside this README. `parse` prints the
+source-spanned AST as JSON. `check` prints local and inherited rule counts.
+`apply` writes optimized HIR JSON to stdout and optional JSON-line traces to
+stderr. Diagnostics cause exit status 1. `--budget N` bounds successful rewrites
+(default 10000); exhaustion includes recent rule names and, with `--trace`, the
+completed trace. Output is published only after optimization succeeds.
 
-Optilisp is a declarative S-expression language. Its surface grammar:
+For additional inheritance dependencies, repeat `--kernel-dir DIR`. All `.bst`
+files in those directories (searched recursively) are loaded by their declared kernel name. Dependencies
+resolve base-first in listed order, shared ancestors execute once, and duplicate
+rule names across the resolved graph are rejected. `ConstantFolding` is supplied
+as a built-in entry only when no kernel with that name is supplied.
+
+The example optimizes signed 8-bit `(x plus 3) plus 4` to `x plus 7`:
 
 ```text
-program  := form*
-form     := list | atom
-list     := '(' form* ')'
-atom     := symbol | keyword | string | number | boolean | nil
+ReassociateAddConstants: ((x plus 3) plus 4) -> (x plus (3 plus 4))
+ConstantFolding:         (3 plus 4) -> 7
 ```
 
-The reader is generic and knows nothing about semantic forms. Domain knowledge lives in
-the semantic analyzer and validator, keeping syntax and semantics separate.
+## HIR fixture format
 
-### Kernel form
+Fixtures are JSON objects with `root` (node ID) and `nodes` (ID-to-node map).
+References may share nodes. Node IDs specify **identity**, not textual or
+structural equality. Every node has:
 
-```lisp
-(define-kernel
-  :id "blackstone.hir.constant-folding.integer-add"
-  :name "Integer Addition Constant Folding"
-  :stage hir
+* `kind`: `literal`, `input`, or `binary`.
+* `type`: `{ "domain": "integer", "width": 8, "signed": false }`.
+  Defaults are scalar unsigned integer, width 32. Width must be positive.
+  Other domains can be represented as metadata, but fail integer guards.
+* `resolved`: Boolean, default true.
+* `provenance`: source/debug label, default the input node ID.
+* `origin`: originating rewrite rule, default empty.
 
-  (category constant-evaluation)
-  (paradigms algebraic-rewriting rule-based)
-  (objective "Evaluate an integer addition whose operands are both known constants.")
+Literal nodes have a decimal `value` (prefer a string to avoid JSON consumer
+precision loss). Values must be numerically representable in the exact type;
+they are not silently reduced modulo the width. Concrete literals are pure and
+total. Poison/undef and potentially trapping values are represented as `input`
+nodes with appropriate facts, not concrete literals.
 
-  (requires
-    (capability typed-expressions)
-    (analysis constant-value-analysis))
+Input nodes optionally provide `pure` and `total`: `true`, `false`, or `null`
+(unknown, the default). `op` is their descriptive name, default the node ID.
+Binary nodes have `op`, exactly two operand IDs in `args`, and optional `flags`
+(string list, default empty). Binary nodes can carry explicit `pure`/`total`
+proofs; otherwise the adapter derives conservative facts from the operation and
+its operands. Explicit true facts are host proofs, not facts inferred from text.
+Mixed types and unrecognized/altered semantic flags block integer rewrites.
+Cycles, including unreachable cycles, are rejected.
 
-  (preconditions
-    (operation-has-defined-compile-time-semantics))
+The serializer assigns deterministic output IDs, preserves sharing, and carries
+provenance/origin fields. It does not preserve original JSON node-ID spelling.
 
-  (transform
-    (fold (add (integer a) (integer b)) (integer-result (integer-add a b))))
+## Frontend and validation
 
-  (correctness (preserve-observable-behavior))
-  (expected-effects "Replaces a constant integer addition with its compile-time value.")
-  (limitations "Requires both operands to be known constants.")
+`grammar/blackstone.g` implements the brief's concrete syntax with dparser's
+scannerless lexical matching. `src/parser.c` handles whitespace and non-nesting
+comments, rejects unterminated block comments/backticks, and exports the native parse
+tree with byte offsets. `python/blackstone/frontend.py` converts that tree into
+immutable value-owned AST objects; it does not tokenize or reparse source.
+Identifiers are ASCII and keyword productions enforce identifier boundaries.
+Backtick operators have equal precedence and associate left-to-right.
+Parentheses establish explicit nested trees. Malformed operators/delimiters
+produce source-located syntax diagnostics.
 
-  (documentation
-    (purpose "Fold a constant integer addition into its compile-time result.")))
-```
+`resolve.py` registers the explicit Term/Binary view mapping, operators,
+refinements, capabilities, aliases, and arities. It checks concerns/imports,
+capture numbering, earlier-only identity references, exact signature/match
+trees, replacement sorts, duplicate names, and inheritance cycles. Integer
+spellings stay strings in the AST; chunked conversion avoids both machine-word
+overflow and Python's decimal-string input limit. An unrepresentable exact
+integer fails matching; an unrepresentable replacement fails construction.
 
-## Validation layers
+### Additional v0 decisions
 
-Blackstone validates in six distinct layers (spec section 17):
+* The reference adapter is an **occurrence tree**, even when serialization shares
+  nodes. Every operand occurrence denotes an evaluation. Sharing establishes
+  identity but does not itself establish purity or totality.
+* All nonempty semantic-flag lists are conservatively excluded from registered
+  modular operations. No flags transfer to newly constructed operators.
+* The built-in constant-folder is one ordered driver entry handling all seven
+  registered operators. Exceptional division remains intact.
+* `-> Binary` requires an explicit binary replacement: a general Term capture
+  cannot statically guarantee that result sort.
+* Integer binary construction requires the matched skeleton to satisfy the
+  reference modular operation contract. Structured-host construction requires
+  proven host guards and a homogeneous registered carrier domain. Capture
+  forwarding still checks exact result type.
+* Guard conjunctions flatten parentheses without changing left-to-right order.
+  Only the Boolean value `True` (proven true) allows construction.
+* Shared input nodes preserve shared identity during context-independent
+  optimization. Trace ordering is deterministic postorder; rewrites of a shared
+  node are traced once, then the normalized node is reused at its occurrences.
+* Identity/no-change candidates are skipped without spending rewrite budget.
 
-1. **Syntax** — balanced parens, well-formed forms, valid grammar
-2. **Structural** — required fields, correct types, recognized stage
-3. **References** — unique IDs, resolvable cross-references
-4. **Semantic** — stage compatibility, contradictory contracts
-5. **Transformation** — verb vocabulary, stage-appropriate transforms
-6. **Database** — deterministic load, indexes, global policy
+## Adapter and driver boundaries
 
-## Tests
+The public Python entry points are `frontend.parse/load`, `resolve.resolve`,
+`hir.TreeAdapter`, and `rewrite.Driver.optimize`. The adapter provides:
 
-```sh
-make test
-```
+1. Resolved typed values and explicit binary operands/opcodes (`Value`, `Type`).
+2. Stable identity via `identity`, independent of structural equality.
+3. Tri-state property/analysis queries via `predicate` and `fact`.
+4. Typed literal and binary construction preserving source/debug provenance.
 
-The test suite covers:
-- Parser (Layer 1): valid/invalid syntax, escapes, locations
-- Semantic analysis: form extraction, registry records
-- Validation (Layers 2–6): structural, reference, semantic, transformation, database
-- Query: filtering by stage, category, capability, analysis, verb, text
-- Schema: JSON Schema validation
-- Monoid laws: executable law verification
+The reference guards inspect metadata only. They never evaluate input programs.
+`ModularInteger` checks **every exposed binary node** and its immediate operands
+for homogeneous scalar integer types and unflagged registered semantics; it does
+not recursively impose these semantics on opaque Term captures. `Pure` and
+`Total` inspect those captured expressions conservatively. Replacements are
+built immutably after all guards succeed and validated before being installed.
 
-## Design principles
+A compiler integration can implement the same adapter query/construction
+contracts or translate its HIR into the value-owned reference form. A native SSA
+integration additionally needs its own installation/def-use requeue layer: SSA
+references read already-produced values, so their facts differ from occurrence
+trees. Effectful defining instructions and effect dependencies must survive
+dead-use elimination. The reference driver does not supply an SSA mutation layer.
 
-- **One kernel, one optimization** — each kernel has one primary transformation objective
-- **Declarative descriptions** — kernels describe transformations and contracts, not imperative code
-- **Explicit applicability** — kernels declare when they are valid
-- **Explicit IR stage** — every kernel identifies its target NodeIR stage
-- **Correctness first** — transformations preserve observable behavior under stated assumptions
-- **Machine-readable metadata** — kernels are parseable, validated, indexed, and queryable
-- **Separation of concerns** — database, validator, and executor remain distinct
+The supplied fixture's oriented identities, movement, reassociation, and folding
+follow the `(B, L, D)` termination argument in `AGENTS.md`. Arbitrary user rules
+are controlled by the rewrite budget. Static validation establishes well-formed
+rules and contracts; it is not an equivalence prover for arbitrary user rules.
 
-## Dependencies
+## Verification
 
-- Python 3.8+ (standard library only)
-- C11 and C++17 compilers for the native loader and `make test` native checks
-- No external dependencies
-
-See [Native Optilisp loader](docs/c-loader.md) for the C/C++ API, ownership
-rules, build commands and validation scope. Worked definitions are available
-in `optilisp/examples/`.
-
-## License
-
-See `AGENTS.md` for the full specification. Blackstone is part of the `libstone` project.
+The CTest target runs `tests/test_contract.py` against the generated native
+parser and the actual `.bst` fixture. It covers all 16 rules through the real
+matcher/driver, exhaustive signed/unsigned widths 1–4 against an independent
+integer evaluator, all literal pairs for the seven operators, exceptional
+division, exact type preservation, wraparound, and signed one-bit behavior.
+It also covers source-located negative diagnostics, comments, imports, aliases,
+multiline/nested signatures, large integer spellings, inheritance diamonds and
+cycles, unsafe semantic domains/flags, missing facts, effect/trap/divergence/
+poison/undef cases, identity-distinct expressions, effectful operand evaluation
+count/order, short-circuit guards, fixed-point cleanup, deterministic traces,
+provenance, idempotence, bounded nonconvergence, and CLI execution.

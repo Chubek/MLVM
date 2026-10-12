@@ -1,2 +1,3 @@
-# This project Makefile is source, rather than generated build output.
-!Makefile
+/build/
+__pycache__/
+*.pyc
