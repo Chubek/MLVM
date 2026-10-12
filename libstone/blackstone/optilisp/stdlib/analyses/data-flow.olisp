@@ -1,6 +1,12 @@
 ;;; Data-flow and value analyses.
 
 (define-analysis
+  :id "null-state-analysis"
+  :name "Null State Analysis"
+  (description
+    "Computes proven null, proven non-null, or unknown pointer states at program points; unknown states do not justify removing null checks."))
+
+(define-analysis
   :id "constant-value-analysis"
   :name "Constant Value Analysis"
   (description

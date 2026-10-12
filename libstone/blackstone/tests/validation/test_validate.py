@@ -1,6 +1,7 @@
 """Layered validation tests (spec section 17)."""
 
 import unittest
+import tempfile
 from pathlib import Path
 
 from optilisp.errors import DiagnosticSink
@@ -15,6 +16,7 @@ from optilisp.validate import (
     validate_unique_ids,
     kernel_to_dict,
     validate_kernel_against_schema,
+    validate_all,
 )
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -100,6 +102,17 @@ class TestTransformationLayer(unittest.TestCase):
 
 
 class TestDatabaseLayer(unittest.TestCase):
+    def test_empty_caller_sink_receives_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "kernels").mkdir()
+            source = (FIXTURES / "missing-stage.olisp").read_text(encoding="utf-8")
+            (root / "kernels" / "invalid.olisp").write_text(source, encoding="utf-8")
+            sink = DiagnosticSink()
+            validate_all(root, stdlib_dir=ROOT / "optilisp" / "stdlib", sink=sink)
+            self.assertTrue(sink.has_errors())
+            self.assertTrue(any("stage" in d.message for d in sink.errors))
+
     def test_duplicate_ids_fail(self):
         # Build a minimal database from the two duplicate fixtures.
         reg = load_registry(ROOT / "optilisp" / "stdlib", DiagnosticSink())

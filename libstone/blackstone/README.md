@@ -24,6 +24,7 @@ blackstone/
 │   └── lir/                   #   Low-level IR kernels (46)
 ├── optilisp/                  # Optilisp language implementation (Python 3, stdlib only)
 │   ├── src/optilisp/          #   Reader, semantic analyzer, validator, query engine
+│   ├── loader/                #   C11 reader/local validator and C++17 ownership wrapper
 │   ├── stdlib/                #   Capability, analysis, and monoid registries
 │   └── examples/              #   Example Optilisp definitions
 ├── tools/                     # Command-line tools
@@ -146,7 +147,12 @@ The test suite covers:
 ## Dependencies
 
 - Python 3.8+ (standard library only)
+- C11 and C++17 compilers for the native loader and `make test` native checks
 - No external dependencies
+
+See [Native Optilisp loader](docs/c-loader.md) for the C/C++ API, ownership
+rules, build commands and validation scope. Worked definitions are available
+in `optilisp/examples/`.
 
 ## License
 

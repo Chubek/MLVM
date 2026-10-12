@@ -158,7 +158,7 @@ Each kernel uses exactly one primary transformation verb:
 Not all verbs are valid at all stages:
 
 - **HIR**: `rewrite`, `fold`, `propagate`, `eliminate`, `hoist`, `sink`, `interchange`, `unroll`, `peel`, `fuse`, `distribute`, `tile`, `inline`, `specialize`, `canonicalize`, `simplify`, `split`, `merge`, `deduplicate`, `remove`, `strength-reduce`
-- **MIR**: all HIR verbs plus `skew`, `devirtualize`, `promote`, `forward`, `vectorize`, `parallelize`, `if-convert`, `construct`, `outline`, `coalesce`
+- **MIR**: all HIR verbs plus `skew`, `devirtualize`, `promote`, `forward`, `vectorize`, `parallelize`, `if-convert`, `construct`, `outline`, `coalesce`, `combine`
 - **LIR**: `rewrite`, `fold`, `eliminate`, `hoist`, `lower`, `select`, `combine`, `promote`, `demote`, `coalesce`, `rematerialize`, `canonicalize`, `simplify`, `split`, `merge`, `place`, `schedule`, `deduplicate`, `remove`, `strength-reduce`, `sink`
 
 ## Comments

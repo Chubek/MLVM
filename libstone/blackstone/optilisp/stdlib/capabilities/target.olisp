@@ -17,9 +17,9 @@
 (define-capability
   :id "instruction-cost-model"
   :name "Instruction Cost Model"
-  :stages (lir)
+  :stages (mir lir)
   (description
-    "A cost model for target instructions is available."))
+    "A cost model for target instructions is available, including estimates for MIR operations before lowering."))
 
 (define-capability
   :id "register-constraints"

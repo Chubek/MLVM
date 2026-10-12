@@ -435,7 +435,8 @@ def validate_all(
     skip_schema: bool = False,
 ) -> Database:
     """Load and validate the entire database, running all six layers."""
-    sink = sink or DiagnosticSink()
+    if sink is None:
+        sink = DiagnosticSink()
     if stdlib_dir is None:
         stdlib_dir = root / "optilisp" / "stdlib"
 

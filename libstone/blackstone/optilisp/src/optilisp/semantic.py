@@ -54,7 +54,7 @@ STAGE_VERBS = {
         "skew", "inline", "specialize", "devirtualize", "promote",
         "forward", "canonicalize", "simplify", "split", "merge",
         "vectorize", "parallelize", "if-convert", "construct", "outline",
-        "deduplicate", "remove", "strength-reduce", "coalesce",
+        "deduplicate", "remove", "strength-reduce", "coalesce", "combine",
     }),
     "lir": frozenset({
         "rewrite", "fold", "eliminate", "hoist", "lower", "select",

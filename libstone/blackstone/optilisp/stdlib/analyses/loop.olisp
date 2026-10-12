@@ -1,6 +1,18 @@
 ;;; Loop and polyhedral analyses.
 
 (define-analysis
+  :id "parallelization-analysis"
+  :name "Parallelization Analysis"
+  (description
+    "Records loop parallelization legality under dependence, side-effect, and execution-model constraints; unresolved constraints remain unknown."))
+
+(define-analysis
+  :id "vectorization-analysis"
+  :name "Vectorization Analysis"
+  (description
+    "Records loop vectorization legality and supported vector widths under dependence, arithmetic, and target-operation constraints; unresolved constraints remain unknown."))
+
+(define-analysis
   :id "loop-invariant-analysis"
   :name "Loop Invariant Analysis"
   (description
