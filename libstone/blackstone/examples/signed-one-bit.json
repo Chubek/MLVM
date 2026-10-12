@@ -1,0 +1,8 @@
+{
+  "root": "product",
+  "nodes": {
+    "x": {"kind": "input", "type": {"width": 1, "signed": true}, "pure": true, "total": true},
+    "negative_one": {"kind": "literal", "type": {"width": 1, "signed": true}, "value": "-1"},
+    "product": {"kind": "binary", "type": {"width": 1, "signed": true}, "op": "times", "args": ["x", "negative_one"]}
+  }
+}

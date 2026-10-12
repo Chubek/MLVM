@@ -11,7 +11,7 @@ from blackstone.hir import Type, Value, binary, literal, load_fixture, dump_fixt
 from blackstone.rewrite import Driver, Nonconvergence, describe
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / "kernels/AlgebraicSimplification.bst"
+FIXTURE = ROOT / "kernels/expressions/AlgebraicSimplification.bst"
 SOURCE = FIXTURE.read_text()
 
 

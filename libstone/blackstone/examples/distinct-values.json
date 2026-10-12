@@ -1,0 +1,8 @@
+{
+  "root": "difference",
+  "nodes": {
+    "left": {"kind": "input", "type": {"width": 8}, "op": "x", "pure": true, "total": true},
+    "right": {"kind": "input", "type": {"width": 8}, "op": "x", "pure": true, "total": true},
+    "difference": {"kind": "binary", "type": {"width": 8}, "op": "minus", "args": ["left", "right"]}
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "root": "product",
+  "nodes": {
+    "x": {"kind": "input", "type": {"width": 8}, "pure": null, "total": null},
+    "zero": {"kind": "literal", "type": {"width": 8}, "value": "0"},
+    "product": {"kind": "binary", "type": {"width": 8}, "op": "times", "args": ["x", "zero"]}
+  }
+}

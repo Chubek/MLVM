@@ -1,0 +1,7 @@
+{
+  "root": "difference",
+  "nodes": {
+    "x": {"kind": "input", "type": {"width": 8, "signed": true}, "pure": true, "total": true},
+    "difference": {"kind": "binary", "type": {"width": 8, "signed": true}, "op": "minus", "args": ["x", "x"], "provenance": "identity:2"}
+  }
+}

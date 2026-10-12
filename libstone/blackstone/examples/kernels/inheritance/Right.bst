@@ -1,0 +1,1 @@
+Kernel ExampleRight(inherits ExampleBase);

@@ -1,0 +1,8 @@
+{
+  "root": "masked",
+  "nodes": {
+    "x": {"kind": "input", "type": {"width": 8}, "pure": null, "total": null},
+    "mask": {"kind": "literal", "type": {"width": 8}, "value": "255"},
+    "masked": {"kind": "binary", "type": {"width": 8}, "op": "bit_and", "args": ["x", "mask"]}
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "root": "sum",
+  "nodes": {
+    "a": {"kind": "input", "type": {"width": 8}},
+    "b": {"kind": "input", "type": {"width": 8}},
+    "sum": {"kind": "binary", "type": {"width": 8}, "op": "plus", "args": ["a", "b"]}
+  }
+}

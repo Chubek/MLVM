@@ -1,0 +1,8 @@
+{
+  "root": "sum",
+  "nodes": {
+    "x": {"kind": "input", "type": {"width": 8}, "op": "effectful_x", "pure": false, "total": true},
+    "zero": {"kind": "literal", "type": {"width": 8}, "value": "0"},
+    "sum": {"kind": "binary", "type": {"width": 8}, "op": "plus", "args": ["x", "zero"], "provenance": "identity:1"}
+  }
+}

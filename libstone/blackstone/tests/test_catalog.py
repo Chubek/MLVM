@@ -73,7 +73,7 @@ class CatalogTests(unittest.TestCase):
         cls.kernels = {path: load(path) for path in FILES}
 
     def test_exact_inventory_and_every_file_validates(self):
-        additions = [p for p in FILES if p.parent != ROOT / "kernels"]
+        additions = [p for p in FILES if p.name != "AlgebraicSimplification.bst"]
         self.assertEqual(len(FILES), 85)
         self.assertEqual(len(additions), 84)
         self.assertEqual(Counter(p.parent.name for p in additions), COUNTS)
@@ -154,7 +154,7 @@ class CatalogTests(unittest.TestCase):
                     self.assertIs(result, captures[decimal(rule.build.value) - 1])
 
     def test_host_operators_never_become_integer_folds(self):
-        program = resolve(self.kernels[ROOT / "kernels/AlgebraicSimplification.bst"])
+        program = resolve(self.kernels[ROOT / "kernels/expressions/AlgebraicSimplification.bst"])
         for name, op in program.registry.operators.items():
             if op.domain == "integer":
                 continue
@@ -176,7 +176,9 @@ class CatalogTests(unittest.TestCase):
                 return super().predicate(name, *args)
 
         for path, kernel in self.kernels.items():
-            if path.parent.name != "expressions":
+            # This checks an individual rule's proof gate. The acceptance kernel
+            # has other rules that can independently simplify the same input.
+            if path.parent.name != "expressions" or kernel.name == "AlgebraicSimplification":
                 continue
             node, _ = specimen(kernel.rules[0], Type(width=8, signed=True))
             for guard in kernel.rules[0].guard:

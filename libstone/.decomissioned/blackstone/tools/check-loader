@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""check-loader -- smoke-test the C loader in optilisp/loader/.
+
+Compiles C and C++ clients, exercises reader/validation regressions and
+checks every production kernel. Exit 0 on success, 1 on failure.
+"""
+
+from __future__ import annotations
+
+import argparse
+import shlex
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+PROBE_C = r"""
+#include <stdio.h>
+#include "Optlilisp.h"
+
+static int check_file(const char *path, int expect_ok) {
+    OptlilispProgram prog;
+    OptlilispSink sink;
+    size_t i;
+    int parse_rc;
+    int kernel_count = 0;
+    optlilisp_program_init(&prog);
+    optlilisp_sink_init(&sink);
+    parse_rc = optlilisp_parse_file(path, &prog, &sink);
+    if (expect_ok && parse_rc != 0) {
+        printf("FAIL: %s: parse failed\n", path);
+        for (i = 0; i < sink.count; i++)
+            printf("  [%s] %s\n", sink.items[i].code, sink.items[i].message);
+        optlilisp_program_fini(&prog);
+        optlilisp_sink_fini(&sink);
+        return 1;
+    }
+    for (i = 0; i < prog.count; i++)
+        if (optlilisp_is_define_kernel(prog.forms[i])) {
+            kernel_count++;
+            if (optlilisp_validate_kernel(prog.forms[i], &sink) != 0 && expect_ok) {
+                printf("FAIL: %s: kernel validation failed\n", path);
+                for (size_t j = 0; j < sink.count; j++)
+                    printf("  [%s] %s\n", sink.items[j].code, sink.items[j].message);
+                optlilisp_program_fini(&prog);
+                optlilisp_sink_fini(&sink);
+                return 1;
+            }
+        }
+    if (expect_ok && kernel_count == 0) {
+        printf("FAIL: %s: no define-kernel form found\n", path);
+        optlilisp_program_fini(&prog);
+        optlilisp_sink_fini(&sink);
+        return 1;
+    }
+    if (!expect_ok && !optlilisp_sink_has_errors(&sink)) {
+        printf("FAIL: %s: expected validation errors, got none\n", path);
+        optlilisp_program_fini(&prog);
+        optlilisp_sink_fini(&sink);
+        return 1;
+    }
+    printf("ok: %s (forms=%u kernels=%d)\n", path,
+           (unsigned)prog.count, kernel_count);
+    optlilisp_program_fini(&prog);
+    optlilisp_sink_fini(&sink);
+    return 0;
+}
+
+static int check_inline(void) {
+    OptlilispProgram prog;
+    OptlilispSink sink;
+    int rc = 0;
+    /* Negative: missing stage + missing transform must fail validation. */
+    const char *bad =
+        "(define-kernel :id \"x\" :name \"X\" :stage bogus "
+        "(category c) (objective \"o\") (requires (capability a)) "
+        "(preconditions (p)) (correctness (c)) "
+        "(expected-effects \"e\") (limitations \"l\") "
+        "(documentation (purpose \"p\")))";
+    optlilisp_sink_init(&sink);
+    optlilisp_program_init(&prog);
+    if (optlilisp_parse(bad, "<inline>", &prog, &sink) != 0) {
+        printf("FAIL: inline bad kernel did not parse\n");
+        rc = 1;
+    } else if (prog.count != 1 ||
+               optlilisp_validate_kernel(prog.forms[0], &sink) == 0) {
+        printf("FAIL: inline bad kernel unexpectedly valid\n");
+        rc = 1;
+    } else {
+        printf("ok: inline negative case rejected\n");
+    }
+    optlilisp_program_fini(&prog);
+    optlilisp_sink_fini(&sink);
+    /* Stage/verb table spot checks. */
+    if (!optlilisp_is_stage("hir") || !optlilisp_is_verb("fold") ||
+        !optlilisp_verb_ok_at_stage("fold", "hir") ||
+        optlilisp_verb_ok_at_stage("select", "hir")) {
+        printf("FAIL: stage/verb tables wrong\n");
+        rc = 1;
+    } else {
+        printf("ok: stage/verb tables\n");
+    }
+    return rc;
+}
+
+static int regressions(void) {
+    OptlilispProgram prog;
+    OptlilispSink sink;
+    const char *bad[] = {"(x", "\"bad\\q\"", ")", ":", "9223372036854775808", "-9223372036854775809"};
+    char deep[OPTLILISP_MAX_DEPTH * 2 + 3];
+    size_t i;
+    optlilisp_program_init(&prog);
+    for (i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        optlilisp_sink_init(&sink);
+        if (!optlilisp_parse(bad[i], "regression", &prog, &sink)) return 1;
+        optlilisp_sink_fini(&sink);
+    }
+    for (i = 0; i < OPTLILISP_MAX_DEPTH + 1; i++) {
+        deep[i] = '(';
+        deep[OPTLILISP_MAX_DEPTH + 1 + i] = ')';
+    }
+    deep[sizeof(deep) - 1] = 0;
+    optlilisp_sink_init(&sink);
+    if (!optlilisp_parse(deep, "deep", &prog, &sink)) return 1;
+    optlilisp_sink_fini(&sink);
+    optlilisp_sink_init(&sink);
+    if (optlilisp_parse("; comment\n  :id \"a\\0b\" -7 3.14 true false nil ()", "atoms", &prog, &sink)) return 1;
+    if (prog.count != 8 || prog.forms[0]->loc.line != 2 || prog.forms[0]->loc.column != 3 ||
+        prog.forms[1]->text_length != 3 || prog.forms[1]->u.string[1] != 0 ||
+        prog.forms[1]->u.string[2] != 'b' || prog.forms[2]->u.ival != -7 ||
+        prog.forms[3]->kind != OPTLILISP_FLOAT || !prog.forms[4]->u.bval ||
+        prog.forms[5]->u.bval || prog.forms[6]->kind != OPTLILISP_NIL ||
+        prog.forms[7]->kind != OPTLILISP_LIST) return 1;
+    optlilisp_sink_fini(&sink);
+    optlilisp_sink_init(&sink);
+    if (!optlilisp_parse_file("/nonexistent/optilisp-file", &prog, &sink) || prog.count) return 1;
+    optlilisp_sink_fini(&sink);
+    optlilisp_program_fini(&prog);
+    printf("ok: reader regressions\n");
+    return 0;
+}
+
+static int invalid_sections(const char *path) {
+    OptlilispProgram prog;
+    OptlilispSink sink;
+    OptlilispNode *section;
+    const char *heads[] = {"category", "objective", "requires", "preconditions", "correctness", "expected-effects", "limitations", "documentation"};
+    size_t i;
+    optlilisp_program_init(&prog);
+    optlilisp_sink_init(&sink);
+    if (optlilisp_parse_file(path, &prog, &sink)) return 1;
+    optlilisp_sink_fini(&sink);
+    for (i = 0; i < sizeof(heads) / sizeof(heads[0]); i++) {
+        size_t count;
+        section = optlilisp_find_section(prog.forms[0], heads[i]);
+        if (!section) return 1;
+        count = section->u.list.count;
+        section->u.list.count = 1;
+        optlilisp_sink_init(&sink);
+        if (!optlilisp_validate_kernel(prog.forms[0], &sink)) return 1;
+        section->u.list.count = count;
+        optlilisp_sink_fini(&sink);
+    }
+    /* Duplicate singleton section, then unknown section. */
+    section = optlilisp_find_section(prog.forms[0], "category");
+    {
+        OptlilispNode *doc = optlilisp_find_section(prog.forms[0], "documentation");
+        OptlilispNode *head = doc->u.list.items[0];
+        doc->u.list.items[0] = section->u.list.items[0];
+        optlilisp_sink_init(&sink);
+        if (!optlilisp_validate_kernel(prog.forms[0], &sink)) return 1;
+        optlilisp_sink_fini(&sink);
+        doc->u.list.items[0] = head;
+        head->u.sym[0] = 'X';
+        optlilisp_sink_init(&sink);
+        if (!optlilisp_validate_kernel(prog.forms[0], &sink)) return 1;
+        optlilisp_sink_fini(&sink);
+    }
+    optlilisp_program_fini(&prog);
+    printf("ok: empty, duplicate and unknown sections rejected\n");
+    return 0;
+}
+
+static int check_definitions(const char *path) {
+    OptlilispProgram prog;
+    OptlilispSink sink;
+    int failed;
+    optlilisp_program_init(&prog);
+    optlilisp_sink_init(&sink);
+    failed = optlilisp_parse_file(path, &prog, &sink);
+    if (!failed) failed = optlilisp_validate_program(&prog, &sink);
+    if (failed) printf("FAIL: registry/example definitions in %s\n", path);
+    optlilisp_sink_fini(&sink);
+    optlilisp_program_fini(&prog);
+    return failed;
+}
+
+int main(int argc, char **argv) {
+    int failures = 0;
+    if (argc < 3) {
+        fprintf(stderr, "usage: probe <good.olisp> <bad.olisp>\n");
+        return 2;
+    }
+    failures += check_file(argv[1], 1);
+    failures += check_file(argv[2], 0);
+    failures += check_inline();
+    failures += regressions();
+    failures += invalid_sections(argv[1]);
+    for (int i = 3; i < argc; i++) {
+        if (argv[i][0] == '@') failures += check_definitions(argv[i] + 1);
+        else failures += check_file(argv[i], 1);
+    }
+    if (failures == 0) printf("check-loader: all C loader checks passed\n");
+    return failures ? 1 : 0;
+}
+"""
+
+PROBE_CPP = r"""
+#include "Optlilisp.hpp"
+#include <cassert>
+#include <utility>
+int main(int argc, char **argv) {
+    assert(argc == 2);
+    auto program = optlilisp::Program::parse_file(argv[1]);
+    auto moved = std::move(program);
+    assert(moved.size() == 1);
+    auto info = optlilisp::kernel_info(moved.form(0));
+    assert(info.stage == "hir" && info.verb == "fold");
+    std::vector<optlilisp::Diagnostic> diagnostics;
+    try {
+        auto bad = optlilisp::Program::parse("(unclosed", "bad.olisp", &diagnostics);
+        return 1;
+    } catch (const optlilisp::Error &) {
+        assert(!diagnostics.empty());
+        assert(diagnostics[0].location.file == "bad.olisp");
+    }
+}
+"""
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="check-loader")
+    parser.add_argument("--cc", default="cc")
+    parser.add_argument("--cxx", default="c++")
+    parser.add_argument("--cflags", default="-Wall -Wextra -std=c11")
+    parser.add_argument("--verbose", action="store_true")
+    args = parser.parse_args(argv)
+
+    root = Path(__file__).resolve().parents[1]
+    loader_dir = root / "optilisp" / "loader"
+    good = root / "optilisp" / "examples" / "constant-folding.olisp"
+    bad = root / "tests" / "fixtures" / "missing-stage.olisp"
+    for path in (loader_dir / "Optlilisp.c", loader_dir / "Optlilisp.h", good, bad):
+        if not path.is_file():
+            print(f"check-loader: missing file: {path}", file=sys.stderr)
+            return 2
+
+    temp_root = Path("/tmp/opencode")
+    temp_root.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="optlilisp-loader-", dir=temp_root) as tmp:
+        probe_c = Path(tmp) / "probe.c"
+        probe = Path(tmp) / "probe"
+        probe_c.write_text(PROBE_C, encoding="utf-8")
+        cmd = (
+            shlex.split(args.cc)
+            + shlex.split(args.cflags)
+            + [str(probe_c), str(loader_dir / "Optlilisp.c"),
+               "-I", str(loader_dir), "-o", str(probe)]
+        )
+        if args.verbose:
+            print("+ " + " ".join(cmd))
+        completed = subprocess.run(cmd, capture_output=True, text=True)
+        if completed.returncode != 0:
+            print(completed.stdout)
+            print(completed.stderr, file=sys.stderr)
+            print("check-loader: compile failed", file=sys.stderr)
+            return 1
+        kernels = sorted((root / "kernels").rglob("*.olisp"))
+        definitions = sorted((root / "optilisp" / "stdlib").rglob("*.olisp"))
+        definitions.append(root / "optilisp" / "examples" / "monoid.olisp")
+        run = subprocess.run([str(probe), str(good), str(bad)] + [str(p) for p in kernels]
+                             + ["@" + str(p) for p in definitions],
+                             capture_output=True, text=True)
+        if args.verbose or run.returncode:
+            print(run.stdout, end="")
+        else:
+            print(f"check-loader: reader/validation regressions and {len(kernels)} kernels passed")
+        if run.stderr:
+            print(run.stderr, file=sys.stderr, end="")
+        if run.returncode:
+            return run.returncode
+        obj = Path(tmp) / "loader.o"
+        cpp = Path(tmp) / "probe.cpp"
+        client = Path(tmp) / "client"
+        cpp.write_text(PROBE_CPP, encoding="utf-8")
+        subprocess.run(shlex.split(args.cc) + shlex.split(args.cflags) +
+                       ["-c", str(loader_dir / "Optlilisp.c"), "-o", str(obj)], check=True)
+        subprocess.run(shlex.split(args.cxx) + ["-std=c++17", "-Wall", "-Wextra", str(cpp),
+                       str(obj), "-I", str(loader_dir), "-o", str(client)], check=True)
+        subprocess.run([str(client), str(good)], check=True)
+        print("check-loader: C++ client passed")
+        return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

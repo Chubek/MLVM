@@ -1,0 +1,8 @@
+{
+  "root": "sum",
+  "nodes": {
+    "three": {"kind": "literal", "type": {"width": 8}, "value": "3"},
+    "x": {"kind": "input", "type": {"width": 8}, "op": "effectful_x", "pure": false, "total": true},
+    "sum": {"kind": "binary", "type": {"width": 8}, "op": "plus", "args": ["three", "x"], "provenance": "movement:1"}
+  }
+}

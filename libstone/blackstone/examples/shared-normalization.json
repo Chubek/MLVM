@@ -1,0 +1,9 @@
+{
+  "root": "difference",
+  "nodes": {
+    "two": {"kind": "literal", "type": {"width": 8}, "value": "2"},
+    "x": {"kind": "input", "type": {"width": 8}, "pure": true, "total": true},
+    "shared": {"kind": "binary", "type": {"width": 8}, "op": "plus", "args": ["two", "x"]},
+    "difference": {"kind": "binary", "type": {"width": 8}, "op": "minus", "args": ["shared", "shared"], "provenance": "sharing:1"}
+  }
+}

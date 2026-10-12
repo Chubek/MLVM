@@ -59,6 +59,7 @@ class Program:
     kernel: object
     rules: tuple
     registry: Registry
+    kernels: tuple = ()
 
 
 def validate(kernel, registry):
@@ -168,7 +169,7 @@ def resolve(kernel, kernels=None, registry=None):
     registry = registry or Registry()
     available = dict(kernels or {})
     available[kernel.name] = kernel
-    rules, done, active, names = [], set(), [], set()
+    rules, done, active, names, ordered = [], set(), [], set(), []
 
     def visit(name, span):
         if name in active:
@@ -187,6 +188,7 @@ def resolve(kernel, kernels=None, registry=None):
             active.pop()
             validate(current, registry)
             local = current.rules
+            ordered.append(current)
         for rule in local:
             if rule.name in names:
                 getattr(rule, "span", span).fail(f"duplicate rule name {rule.name} in inheritance graph")
@@ -194,4 +196,4 @@ def resolve(kernel, kernels=None, registry=None):
             rules.append(rule)
         done.add(name)
     visit(kernel.name, kernel.span)
-    return Program(kernel, tuple(rules), registry)
+    return Program(kernel, tuple(rules), registry, tuple(ordered))

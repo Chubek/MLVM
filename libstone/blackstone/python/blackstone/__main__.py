@@ -17,6 +17,8 @@ def main():
     cli.add_argument("--kernel-dir", action="append", type=Path, default=[])
     cli.add_argument("--trace", action="store_true")
     cli.add_argument("--budget", type=int, default=10000)
+    cli.add_argument("--engine", choices=("python", "native"), default="python",
+                     help="rewrite driver for apply (native uses libblackstone)")
     args = cli.parse_args()
     try:
         kernels = {}
@@ -44,8 +46,15 @@ def main():
             return 0
         if args.hir is None:
             raise Diagnostic("apply requires a typed HIR JSON fixture")
-        driver = Driver(program, budget=args.budget)
-        result = driver.optimize(load_fixture(json.loads(args.hir.read_text())))
+        driver_class = Driver
+        if args.engine == "native":
+            from .native import Driver as driver_class
+        driver = driver_class(program, budget=args.budget)
+        try:
+            result = driver.optimize(load_fixture(json.loads(args.hir.read_text())))
+        finally:
+            if args.engine == "native":
+                driver.close()
         print(json.dumps(dump_fixture(result), indent=2))
         if args.trace:
             for event in driver.trace:

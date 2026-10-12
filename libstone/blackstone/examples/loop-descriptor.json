@@ -1,0 +1,8 @@
+{
+  "root": "region",
+  "nodes": {
+    "bounds": {"kind": "input", "type": {"domain": "loop"}, "op": "bounds_descriptor"},
+    "body": {"kind": "input", "type": {"domain": "loop"}, "op": "body_descriptor"},
+    "region": {"kind": "binary", "type": {"domain": "loop"}, "op": "loop", "args": ["bounds", "body"], "provenance": "loop:1"}
+  }
+}

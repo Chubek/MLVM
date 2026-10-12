@@ -1,0 +1,8 @@
+{
+  "root": "quotient",
+  "nodes": {
+    "a": {"kind": "literal", "type": {"width": 8}, "value": "7"},
+    "b": {"kind": "literal", "type": {"width": 8}, "value": "0"},
+    "quotient": {"kind": "binary", "type": {"width": 8}, "op": "divide", "args": ["a", "b"]}
+  }
+}

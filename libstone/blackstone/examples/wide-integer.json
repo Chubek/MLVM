@@ -1,0 +1,8 @@
+{
+  "root": "sum",
+  "nodes": {
+    "maximum": {"kind": "literal", "type": {"width": 128}, "value": "340282366920938463463374607431768211455"},
+    "one": {"kind": "literal", "type": {"width": 128}, "value": "1"},
+    "sum": {"kind": "binary", "type": {"width": 128}, "op": "plus", "args": ["maximum", "one"], "provenance": "wide:1"}
+  }
+}

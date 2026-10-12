@@ -3,14 +3,19 @@
 Blackstone specifies guarded compiler rewrites in `.bst` files. This initial
 implementation includes a **native dparser frontend**, source-located AST and
 validation, a typed reference HIR adapter, inheritance-driven integer folding,
-and a deterministic fixed-point rewrite driver. The acceptance kernel is the
-actual `kernels/AlgebraicSimplification.bst`: 16 local rules plus the inherited
+and Python and **native C fixed-point rewrite drivers**. The acceptance kernel is
+the actual `kernels/expressions/AlgebraicSimplification.bst`: 16 local rules plus the inherited
 built-in `ConstantFolding` entry.
 
 The [extended catalog](kernels/CATALOG.md) adds **84 kernels** across expressions,
 statements, memory, control flow, loops and polyhedra. It contains 85 kernels and
 100 local rules in total. Expression rules execute on the reference adapter;
 structured-host rules require their registered host proofs and descriptor semantics.
+
+The [24-chapter manual](manual/README.md) covers the language, execution model,
+Python/native APIs and compiler integration. The [runnable example collection](examples/README.md)
+includes 23 HIR fixtures, seven teaching kernels, Python API demos and a C profile
+example, with 27 checked cases for both rewrite engines.
 
 ## Build and run
 
@@ -28,12 +33,17 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
 export BLACKSTONE_PARSER="$PWD/build/blackstone-parser"
+export BLACKSTONE_LIBRARY="$PWD/build/libblackstone.so"
 export PYTHONPATH="$PWD/python"
-python3 -m blackstone parse kernels/AlgebraicSimplification.bst
-python3 -m blackstone check kernels/AlgebraicSimplification.bst
+python3 -m blackstone parse kernels/expressions/AlgebraicSimplification.bst
+python3 -m blackstone check kernels/expressions/AlgebraicSimplification.bst
 python3 -m blackstone check kernels
-python3 -m blackstone apply kernels/AlgebraicSimplification.bst \
+python3 -m blackstone apply kernels/expressions/AlgebraicSimplification.bst \
   examples/reassociate.json --trace
+python3 -m blackstone apply kernels/expressions/AlgebraicSimplification.bst \
+  examples/reassociate.json --engine native --trace
+python3 examples/run_examples.py --engine both
+./build/blackstone-native-example
 ```
 
 `BLACKSTONE_DPARSER_DIR` is a CMake cache override for the supplied dependency.
@@ -44,6 +54,14 @@ source-spanned AST as JSON. `check` prints local and inherited rule counts.
 stderr. Diagnostics cause exit status 1. `--budget N` bounds successful rewrites
 (default 10000); exhaustion includes recent rule names and, with `--trace`, the
 completed trace. Output is published only after optimization succeeds.
+
+`--engine native` lowers the resolved frontend AST into a compiled C profile and
+runs matching, guard sequencing, construction validation, scheduling, memoization
+and budget enforcement in `libblackstone`. The bridge supplies arbitrary-width
+integer operations and host metadata through the same `TreeAdapter` callbacks.
+`BLACKSTONE_LIBRARY` selects the shared library; without it the bridge searches
+the local `build` directory. Use the platform's `.dylib`/`.dll` filename where
+appropriate. Python is the default engine.
 
 For additional inheritance dependencies, repeat `--kernel-dir DIR`. All `.bst`
 files in those directories (searched recursively) are loaded by their declared kernel name. Dependencies
@@ -135,7 +153,9 @@ integer fails matching; an unrepresentable replacement fails construction.
 ## Adapter and driver boundaries
 
 The public Python entry points are `frontend.parse/load`, `resolve.resolve`,
-`hir.TreeAdapter`, and `rewrite.Driver.optimize`. The adapter provides:
+`hir.TreeAdapter`, `rewrite.Driver.optimize`, and `native.Driver.optimize`.
+Native drivers also support `close()` and context-manager lifetime management.
+The adapter provides:
 
 1. Resolved typed values and explicit binary operands/opcodes (`Value`, `Type`).
 2. Stable identity via `identity`, independent of structural equality.
@@ -156,6 +176,24 @@ references read already-produced values, so their facts differ from occurrence
 trees. Effectful defining instructions and effect dependencies must survive
 dead-use elimination. The reference driver does not supply an SSA mutation layer.
 
+### Native compiler API
+
+The previously scaffolded `include/`, `concern/`, `requires/`, `profile/`,
+`rewrite/`, and loop-descriptor standard-library files implement a standalone C11
+runtime. Link the CMake target `Blackstone::Runtime` or `libblackstone` and include
+`Blackstone-Rewrite.h`. The six public headers expose registries, typed views,
+source-spanned kernel IR, compiled profiles, host callbacks, traces and diagnostics.
+
+`bs_profile_compile` independently resolves declarations/inheritance and validates
+postorder match/build instructions. Concern and capability module loading is
+atomic. Compiled profiles own their IR, preserve deterministic base/source order,
+and can be saved/reloaded with a bounded, versioned, pointer-free binary encoding.
+`bs_optimize` publishes a new root only on success; host-owned inputs are immutable.
+
+See [the native API guide](docs/native-api.md) for ownership, callback semantics,
+the profile format, and compiler integration. The source grammar remains the
+dparser grammar; the profile `parser.h` is the AST-to-IR boundary.
+
 The supplied fixture's oriented identities, movement, reassociation, and folding
 follow the `(B, L, D)` termination argument in `AGENTS.md`. Arbitrary user rules
 are controlled by the rewrite budget. Static validation establishes well-formed
@@ -174,3 +212,26 @@ cycles, unsafe semantic domains/flags, missing facts, effect/trap/divergence/
 poison/undef cases, identity-distinct expressions, effectful operand evaluation
 count/order, short-circuit guards, fixed-point cleanup, deterministic traces,
 provenance, idempotence, bounded nonconvergence, and CLI execution.
+
+`tests/test_native.py` runs the same semantic tests and extended-catalog proof
+gates with the C compiler/matcher/driver, plus native CLI, 20,000-bit integer,
+callback failure, closed-profile and expanding-kernel cases. The separate
+`blackstone-native` CTest exercises the public C ABI directly, module rollback,
+unchecked-IR diagnostics, inheritance diamonds/cycles, adapter violations, and
+binary profile round-trips, every truncated prefix, and single-byte corruption.
+
+The `blackstone-examples` CTest checks the documented manifest on both engines;
+`blackstone-native-example` runs the public-API C demonstration. See
+[`examples/README.md`](examples/README.md) for individual fixture commands and
+expected results.
+
+To run the native memory/undefined-behavior checks:
+
+```sh
+cmake -S . -B build-sanitize -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+  -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined' \
+  -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+cmake --build build-sanitize --target blackstone-native-test --parallel
+./build-sanitize/blackstone-native-test
+```

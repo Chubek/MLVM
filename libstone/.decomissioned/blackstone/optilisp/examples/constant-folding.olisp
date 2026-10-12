@@ -1,0 +1,34 @@
+;;; constant-folding.olisp -- worked Optilisp example.
+;;;
+;;; A minimal but complete define-kernel form. Mirrors the shape used by
+;;; kernels/hir/constant-folding/integer-add.olisp and satisfies the
+;;; structural contract checked by optlilisp_validate_kernel (Layer 2) and
+;;; the C loader in optilisp/loader/Optlilisp.c.
+
+(define-kernel
+  :id "blackstone.example.constant-folding.integer-add"
+  :name "Example Integer Addition Constant Folding"
+  :stage hir
+  (category constant-evaluation)
+  (paradigms algebraic-rewriting rule-based)
+  (objective "Evaluate an integer addition whose operands are both known constants.")
+  (requires
+    (capability typed-expressions)
+    (capability integer-constant-operands)
+    (analysis constant-value-analysis))
+  (preconditions
+    (operation-has-defined-compile-time-semantics)
+    (result-representable-under-integer-semantics))
+  (forbids
+    (operation-has-observable-side-effects))
+  (transform
+    (fold (add (integer a) (integer b)) (integer-result (integer-add a b))))
+  (correctness
+    (preserve-observable-behavior)
+    (respect-integer-overflow-semantics))
+  (expected-effects "Replaces a constant integer addition with its compile-time value.")
+  (limitations "Requires both operands to be known constants and a representable result.")
+  (documentation
+    (purpose "Fold a constant integer addition into its compile-time result.")
+    (motivation "Removing constant arithmetic reduces run-time work and enables downstream rewrites.")
+    (testing-strategy "Positive case 6 + 7 -> 13; negative case with unknown operands must not fold.")))

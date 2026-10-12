@@ -1,0 +1,8 @@
+{
+  "root": "sum",
+  "nodes": {
+    "a": {"kind": "literal", "type": {"width": 8, "signed": true}, "value": "120"},
+    "b": {"kind": "literal", "type": {"width": 8, "signed": true}, "value": "20"},
+    "sum": {"kind": "binary", "type": {"width": 8, "signed": true}, "op": "plus", "args": ["a", "b"], "provenance": "signed:1"}
+  }
+}

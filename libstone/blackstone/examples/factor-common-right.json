@@ -1,0 +1,11 @@
+{
+  "root": "sum",
+  "nodes": {
+    "a": {"kind": "input", "type": {"width": 8}, "op": "effectful_a", "pure": false, "total": true},
+    "b": {"kind": "input", "type": {"width": 8}, "op": "effectful_b", "pure": false, "total": true},
+    "common": {"kind": "input", "type": {"width": 8}, "pure": true, "total": true},
+    "left": {"kind": "binary", "type": {"width": 8}, "op": "times", "args": ["a", "common"]},
+    "right": {"kind": "binary", "type": {"width": 8}, "op": "times", "args": ["b", "common"]},
+    "sum": {"kind": "binary", "type": {"width": 8}, "op": "plus", "args": ["left", "right"], "provenance": "factor:1"}
+  }
+}

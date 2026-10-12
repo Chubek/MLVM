@@ -1,0 +1,7 @@
+#ifndef BLACKSTONE_PROFILE_BINCODE_H
+#define BLACKSTONE_PROFILE_BINCODE_H
+#include "Blackstone-Profile.h"
+#define BS_PROFILE_MAGIC "BSTP\001\000\000\000"
+#define BS_PROFILE_MAGIC_SIZE 8u
+#define BS_PROFILE_MAX_BYTES (16u * 1024u * 1024u)
+#endif

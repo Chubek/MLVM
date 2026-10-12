@@ -1,0 +1,10 @@
+{
+  "root": "sum",
+  "nodes": {
+    "x": {"kind": "input", "type": {"width": 3}, "pure": true, "total": true},
+    "three": {"kind": "literal", "type": {"width": 3}, "value": "3"},
+    "five": {"kind": "literal", "type": {"width": 3}, "value": "5"},
+    "inner": {"kind": "binary", "type": {"width": 3}, "op": "plus", "args": ["x", "three"]},
+    "sum": {"kind": "binary", "type": {"width": 3}, "op": "plus", "args": ["inner", "five"], "provenance": "wrap:1"}
+  }
+}
