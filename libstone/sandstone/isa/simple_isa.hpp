@@ -1,8 +1,8 @@
-// Small, header-only .isa reader. Requires C++20 and DomDSL.hpp.
+// Small, header-only .isa reader. Requires C++20 and MetaTk's DSLtk.hpp.
 // Independent of SymAS databanks; see simple-isa/README.md for the format.
 #pragma once
 
-#include "DomDSL.hpp"
+#include "DSLtk.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -161,7 +161,7 @@ inline bool ident_next(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.';
 }
 
-// DomDSL's ParsecInput owns the cursor. Every token is parsed through its
+// DSLtk's ParsecInput owns the cursor. Every token is parsed through its
 // ExpectedResult/Parser API, so lexer diagnostics keep source offsets.
 inline dsl::Parser<Token> token_parser() {
     return dsl::parser([](dsl::ParsecInput &in) -> dsl::ExpectedResult<Token> {
@@ -551,7 +551,7 @@ inline std::vector<std::uint8_t> ISA::encode_x86(
     return out;
 }
 
-// A native, fluent facade over DomDSL's CRTP CombinatorParser feature. The file
+// A native, fluent facade over DSLtk's CRTP CombinatorParser feature. The file
 // parser and C++ callers build the same checked ISA model through this class.
 class SourceDSL : public dsl::DSL<SourceDSL, dsl::CombinatorParser> {
     ISA model_;

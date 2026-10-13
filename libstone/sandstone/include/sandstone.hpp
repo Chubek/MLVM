@@ -240,7 +240,7 @@ struct DatabankData {
     std::vector<FusionRec> fusions;
 };
 
-// ---- Encoding language (Algol-like, parsed with DomDSL combinators) ----
+// ---- Encoding language (Algol-like, parsed with DSLtk combinators) ----
 namespace encoding {
 
 struct Expr {
@@ -272,7 +272,7 @@ struct Limits { size_t max_steps = 100000; size_t max_bytes = 256; size_t max_re
 struct RelocOut { uint32_t type = 0; uint32_t offset = 0; int64_t addend = 0; std::string symbol; std::string type_name; };
 struct Outcome { std::vector<uint8_t> bytes; std::vector<RelocOut> relocs; };
 
-// Parse with domlibs/domdsl combinatory parser. Empty message = success.
+// Parse with MetaTk's DSLtk combinatory parser. Empty message = success.
 bool parse(const std::string &source, Program &out, std::string &diag);
 // Leading literal bytes (for disassembly candidate prefilter). When nstmts
 // is non-null it receives the number of leading statements consumed.

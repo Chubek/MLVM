@@ -1,28 +1,42 @@
-find_package(Lua 5.4 EXACT QUIET)
-if(NOT LUA_FOUND)
-  find_package(Lua 5.3 EXACT REQUIRED)
-endif()
-set(VMWEAVE_LUA_VERSION "${LUA_VERSION_MAJOR}.${LUA_VERSION_MINOR}" PARENT_SCOPE)
-if(NOT EXISTS "${PROJECT_SOURCE_DIR}/third_party/kaguya/include/kaguya/kaguya.hpp")
-  message(FATAL_ERROR "VMWeave requires the third_party/kaguya binding adapter")
+libstone_require_files(MLVM_LUA_SOURCE_DIR lua.h lapi.c lauxlib.c)
+libstone_require_files(MLVM_KAGUYA_SOURCE_DIR include/kaguya/kaguya.hpp)
+set(vmweave_lua_sources)
+foreach(source IN ITEMS lapi lauxlib lbaselib lcode lcorolib lctype ldblib
+    ldebug ldo ldump lfunc lgc linit liolib llex lmathlib lmem loadlib
+    lobject lopcodes loslib lparser lstate lstring lstrlib ltable ltablib
+    ltm lundump lutf8lib lvm lzio)
+  list(APPEND vmweave_lua_sources "${MLVM_LUA_SOURCE_DIR}/${source}.c")
+endforeach()
+add_library(limestone_vmweave_lua STATIC ${vmweave_lua_sources})
+set_target_properties(limestone_vmweave_lua PROPERTIES
+  C_STANDARD 99 C_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(limestone_vmweave_lua SYSTEM PUBLIC
+  $<BUILD_INTERFACE:${MLVM_LUA_SOURCE_DIR}>)
+if(UNIX)
+  target_compile_definitions(limestone_vmweave_lua PRIVATE LUA_USE_POSIX LUA_USE_DLOPEN)
+  target_link_libraries(limestone_vmweave_lua PRIVATE m ${CMAKE_DL_LIBS})
 endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS vmweave.lua)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/vmweave.lua" VMWEAVE_LUA_SOURCE)
 configure_file(lua_source.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/lua_source.hpp" @ONLY)
 add_library(vmweave STATIC model.cpp frontend.cpp stk.cpp c_backend.cpp machineir.cpp native.cpp native_c_api.cpp)
 target_link_libraries(vmweave PUBLIC limestone_foundation PRIVATE machineir_bridge machineir_native
-  $<BUILD_INTERFACE:${LUA_LIBRARIES}> $<INSTALL_INTERFACE:Limestone::vmweave_lua>)
-target_include_directories(vmweave SYSTEM PRIVATE ${LUA_INCLUDE_DIR} "${PROJECT_SOURCE_DIR}/third_party/kaguya/include")
+  limestone_vmweave_lua)
+target_include_directories(vmweave SYSTEM PRIVATE "${MLVM_KAGUYA_SOURCE_DIR}/include")
 target_include_directories(vmweave PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-add_executable(vmweave-cli main.cpp)
-target_link_libraries(vmweave-cli PRIVATE vmweave)
-if(BUILD_TESTING)
+if(LIMESTONE_BUILD_TOOLS OR LIMESTONE_BUILD_TESTS)
+  add_executable(vmweave-cli main.cpp)
+  target_link_libraries(vmweave-cli PRIVATE vmweave)
+endif()
+if(LIMESTONE_BUILD_TESTS)
+  add_executable(limestone-lua "${MLVM_LUA_SOURCE_DIR}/lua.c")
+  target_link_libraries(limestone-lua PRIVATE limestone_vmweave_lua)
   add_executable(vmweave-model-test tests/model.cpp)
   target_link_libraries(vmweave-model-test PRIVATE vmweave machineir_bridge)
   add_test(NAME vmweave-model COMMAND vmweave-model-test)
   add_executable(vmweave-allocators-test tests/allocators.cpp)
   target_link_libraries(vmweave-allocators-test PRIVATE limestone_foundation)
-  target_include_directories(vmweave-allocators-test SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/third_party/memtkx/include")
+  target_include_directories(vmweave-allocators-test SYSTEM PRIVATE "${MLVM_MEMTKX_SOURCE_DIR}/include")
   add_test(NAME vmweave-allocators COMMAND vmweave-allocators-test)
   set(native_fixtures "${CMAKE_CURRENT_BINARY_DIR}/native-fixtures")
   add_custom_command(OUTPUT "${native_fixtures}/Calculator.c" "${native_fixtures}/Calculator.h"
@@ -52,6 +66,7 @@ if(BUILD_TESTING)
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/native_cli.cmake)
   add_test(NAME vmweave-runtime COMMAND ${CMAKE_COMMAND}
     -DCLI=$<TARGET_FILE:vmweave-cli> -DCC=${CMAKE_C_COMPILER}
+    -DKLIB=${MLVM_KLIB_SOURCE_DIR}
     -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR} -DBINARY=${CMAKE_CURRENT_BINARY_DIR}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime.cmake)
 endif()

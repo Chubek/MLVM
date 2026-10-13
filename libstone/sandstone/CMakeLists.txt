@@ -9,7 +9,7 @@
 #   isa/        small `.isa` sources + loaders (Python/C++)
 #   docs/       Doxygen + prose documentation
 #   scripts/    spec-compiler.py (.dsymspec -> .symas driver) and helpers
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 
 project(Sandstone VERSION 1.1.0 LANGUAGES C CXX)
 
@@ -19,11 +19,13 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-include(GNUInstallDirs)
+include(../cmake/LibstoneBuild.cmake)
+set(CMAKE_CXX_EXTENSIONS OFF)
+option(SANDSTONE_BUILD_TOOLS "Build Sandstone command-line tools" "${LIBSTONE_BUILD_TOOLS}")
 
 option(SANDSTONE_BUILD_COMPILER "Build the spec compiler" ON)
 option(SANDSTONE_BUILD_ASSEMBLER "Build the assembler framework and CLI" ON)
-option(SANDSTONE_BUILD_TESTS "Build and register tests" ON)
+option(SANDSTONE_BUILD_TESTS "Build and register tests" "${LIBSTONE_BUILD_TESTS}")
 option(SANDSTONE_BUILD_DOCS "Build documentation (needs Doxygen)" OFF)
 option(SANDSTONE_BUILD_SANDSLAB "Build the machine-near C++ code generator and Forth example" ON)
 
@@ -63,7 +65,8 @@ target_include_directories(sandstone
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/decoder
 )
-target_compile_options(sandstone PRIVATE -Wall -Wextra)
+target_compile_features(sandstone PUBLIC cxx_std_20)
+libstone_warnings(sandstone)
 
 # zlib carries the default SymAS payload compression; require it so the
 # produced banks stay readable everywhere.
@@ -122,10 +125,9 @@ if(SWIG_EXECUTABLE)
 endif()
 
 if(SANDSTONE_BUILD_TESTS)
-  include(CTest)
   add_executable(sandstone_smoke tests/smoke.cpp)
   target_link_libraries(sandstone_smoke PRIVATE sandstone)
-  target_compile_options(sandstone_smoke PRIVATE -Wall -Wextra)
+  libstone_warnings(sandstone_smoke)
   add_test(NAME sandstone_smoke COMMAND sandstone_smoke)
 
   # End-to-end: compile a shipped spec to .symas with the scripted
@@ -146,14 +148,11 @@ if(SANDSTONE_BUILD_TESTS)
               -s ${CMAKE_CURRENT_SOURCE_DIR}/tests -p "test_simple_isa.py"
     )
   endif()
-  # The C++ simple-ISA harness needs DomDSL; build it
-  # only when they are available.
-  find_path(DOMDSL_INCLUDE_DIR DomDSL.hpp
-    HINTS ${CMAKE_CURRENT_SOURCE_DIR}/../../domlibs/domdsl)
-  if(DOMDSL_INCLUDE_DIR)
+  # DSLtk is supplied by the shared MetaTk checkout.
+  if(EXISTS "${MLVM_METATK_SOURCE_DIR}/DSLtk/DSLtk.hpp")
     add_executable(sandstone_simple_isa_cpp tests/simple_isa.cpp)
     target_include_directories(sandstone_simple_isa_cpp PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/isa ${DOMDSL_INCLUDE_DIR})
+      ${CMAKE_CURRENT_SOURCE_DIR}/isa "${MLVM_METATK_SOURCE_DIR}/DSLtk")
     target_compile_definitions(sandstone_simple_isa_cpp PRIVATE
       SIMPLE_ISA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/isa")
     add_test(NAME sandstone_simple_isa_cpp COMMAND sandstone_simple_isa_cpp)

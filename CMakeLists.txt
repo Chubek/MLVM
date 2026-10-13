@@ -171,6 +171,11 @@ endif()
 
 if(MLVM_BUILD_TESTS)
   enable_testing()
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME mlvm-get-deps COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/get_deps.py)
+  endif()
   add_executable(mlvm-smoke-test tests/smoke.cpp)
   target_link_libraries(mlvm-smoke-test PRIVATE MLVM::Core)
   add_test(NAME mlvm-smoke-test COMMAND mlvm-smoke-test)
@@ -237,6 +242,11 @@ if(MLVM_BUILD_TESTS)
 endif()
 
 include(MLVMBlackstone)
+
+option(MLVM_BUILD_LIBSTONE "Build the full libstone libraries and tools" OFF)
+if(MLVM_BUILD_LIBSTONE)
+  add_subdirectory(libstone)
+endif()
 
 set(MLVM_ENABLE_OPTILISP OFF CACHE STRING "Build legacy Optilisp when its sources are available")
 set_property(CACHE MLVM_ENABLE_OPTILISP PROPERTY STRINGS AUTO ON OFF)

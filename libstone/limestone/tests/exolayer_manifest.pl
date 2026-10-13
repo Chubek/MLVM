@@ -1,14 +1,14 @@
 use strict;
 use warnings;
 use File::Spec;
-my $root=shift @ARGV or die "expected repository root\n";
+my $root=shift @ARGV or die "expected ExolangTk source root\n";
 sub read_text {
   my ($path)=@_;open my $file,'<',$path or die "cannot read $path: $!\n";
   local $/;return <$file>;
 }
-my $manifest=read_text("$root/third_party/exolangtk/manifests/Exolayer-Modules.yaml");
+my $manifest=read_text("$root/manifests/Exolayer-Modules.yaml");
 my ($path)=$manifest=~/header:\s*(\S+)/ or die "missing manifest header\n";
-my $header=read_text(File::Spec->catfile($root,'third_party','exolangtk',$path));
+my $header=read_text(File::Spec->catfile($root,$path));
 my %provided;
 while($manifest=~/(?:types|functions|macros|constants):\s*\[([^\]]*)\]/g) {
   for my $symbol(split /,\s*/,$1) {

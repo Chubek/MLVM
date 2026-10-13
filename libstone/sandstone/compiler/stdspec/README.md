@@ -128,7 +128,7 @@ register **name** (or absent). `width` ∈ `{8,16,32,64,80,128,256,512}`.
 ```
 
 `source` is the Algol-like encoding language parsed by
-`domlibs/domsymas` (`domdsl`). Statements: `emit8`, `emit16le/be`,
+Sandstone (MetaTk's `DSLtk`). Statements: `emit8`, `emit16le/be`,
 `emit32le/be`, `emit64le/be`, `emit_imm(width,v)`, `emit_disp(width,v)`,
 `emit_modrm(dst,src)`, `emit_sib(a,b,c)`, `emit_relocation(sym,TYPE)`,
 `emit_reloc`, `require(cond);`, `if (...) {...} else {...}`, `fail("msg")`.

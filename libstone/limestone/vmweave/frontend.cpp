@@ -1,6 +1,27 @@
 #include "vmweave.hpp"
 #include "lua_source.hpp"
+extern "C" {
+#include <lua.h>
+#include <lauxlib.h>
+}
+// Match the scheduler's adapter for Kaguya's pre-5.5 Lua API.
+#if LUA_VERSION_NUM >= 505
+inline lua_State* lua_newstate(lua_Alloc allocate, void* user) { return ::lua_newstate(allocate, user, 0); }
+#define LUA_GCSETPAUSE (-100)
+#define LUA_GCSETSTEPMUL (-101)
+inline int mlvm_lua_gc(lua_State* state, int operation, int value) {
+    if (operation == LUA_GCSETPAUSE) return ::lua_gc(state, LUA_GCPARAM, LUA_GCPPAUSE, value);
+    if (operation == LUA_GCSETSTEPMUL) return ::lua_gc(state, LUA_GCPARAM, LUA_GCPSTEPMUL, value);
+    return ::lua_gc(state, operation, value);
+}
+#define lua_gc mlvm_lua_gc
+#endif
 #include <kaguya/kaguya.hpp>
+#if LUA_VERSION_NUM >= 505
+#undef lua_gc
+#undef LUA_GCSETPAUSE
+#undef LUA_GCSETSTEPMUL
+#endif
 #include <fstream>
 #include <sstream>
 #include <cmath>

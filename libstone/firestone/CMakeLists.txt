@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 project(Firestone VERSION 0.1.0 LANGUAGES CXX)
 
-include(GNUInstallDirs)
+include(../cmake/LibstoneBuild.cmake)
 include(CMakePackageConfigHelpers)
-include(CTest)
+option(FIRESTONE_BUILD_TESTS "Build Firestone tests" "${LIBSTONE_BUILD_TESTS}")
+if(FIRESTONE_BUILD_TESTS)
+  enable_testing()
+endif()
 
 option(FIRESTONE_ENABLE_OPENMP "Enable OpenMP host compute parallelism" OFF)
 find_package(Threads REQUIRED)
@@ -53,7 +56,7 @@ write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/FirestoneConfigVers
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/FirestoneConfig.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/FirestoneConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Firestone)
 
-if(BUILD_TESTING)
+if(FIRESTONE_BUILD_TESTS)
   foreach(suite IN ITEMS ir representations rewrite eqsat memory types objects semantics cps algorithms extensions vm vm_compiler vm_binary vm_tiering bignum compute concurrency gfx intrin hardening)
     add_executable(firestone_${suite}_test tests/${suite}.cpp)
     target_link_libraries(firestone_${suite}_test PRIVATE Firestone::firestone)

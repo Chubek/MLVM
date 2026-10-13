@@ -16,9 +16,7 @@
 #                                   present — reserved for future maps;
 #                                   containers come from Q-generated gen/)
 
-option(DOMWEAVE_BUILD_TERMSCRIPT_STDLIB "Build the Termscript stdlib" ON)
-
-if(NOT DOMWEAVE_BUILD_TERMSCRIPT_STDLIB)
+if(NOT DOMTERM_BUILD_STDLIB)
   return ()
 endif()
 
@@ -42,10 +40,12 @@ endforeach ()
 
 # Vendored third-party sources (warning-cleanliness of our own files
 # is enforced below; vendored files compile with -w).
-set(TS_STDLIB_TOML_C ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/tomlc99/toml.c)
-set(TS_STDLIB_ISOCLINE_C ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/isocline/src/isocline.c)
-set(TS_STDLIB_TOML_INC ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/tomlc99)
-set(TS_STDLIB_ISOCLINE_INC ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/isocline/include)
+libstone_require_files(MLVM_TOML_SOURCE_DIR toml.c toml.h)
+libstone_require_files(MLVM_ISOCLINE_SOURCE_DIR src/isocline.c include/isocline.h)
+set(TS_STDLIB_TOML_C ${MLVM_TOML_SOURCE_DIR}/toml.c)
+set(TS_STDLIB_ISOCLINE_C ${MLVM_ISOCLINE_SOURCE_DIR}/src/isocline.c)
+set(TS_STDLIB_TOML_INC ${MLVM_TOML_SOURCE_DIR})
+set(TS_STDLIB_ISOCLINE_INC ${MLVM_ISOCLINE_SOURCE_DIR}/include)
 
 add_library(termscript_stdlib STATIC
   ${TS_STDLIB_SOURCES}
@@ -77,7 +77,7 @@ target_compile_definitions(termscript_stdlib PRIVATE
 )
 
 set_source_files_properties(${TS_STDLIB_TOML_C} ${TS_STDLIB_ISOCLINE_C}
-  PROPERTIES COMPILE_OPTIONS "-w")
+  PROPERTIES COMPILE_OPTIONS "$<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-w>")
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(termscript_stdlib PRIVATE -Wall -Wextra)
@@ -89,7 +89,8 @@ endif()
 # python3 + tkinter + the Q bytecode cache are all present; otherwise
 # the committed gen/ outputs are used as-is.
 find_package(Python3 COMPONENTS Interpreter QUIET)
-set(TS_Q_CACHE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../domlibs/domqlib/q/__pycache__)
+set(TS_Q_CACHE "${MLVM_THIRD_PARTY_DIR}/domqlib/q/__pycache__" CACHE PATH
+  "Optional domqlib Q bytecode cache for vector regeneration")
 if(Python3_FOUND AND EXISTS "${TS_Q_CACHE}")
   execute_process(
     COMMAND ${Python3_EXECUTABLE} -c "import tkinter"

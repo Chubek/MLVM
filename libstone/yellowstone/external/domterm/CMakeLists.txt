@@ -1,7 +1,10 @@
 # DomTERM -- PTY/TTY management, Terminfo, session recording, connections,
 # terminal orchestration and the Termscript automation language.
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.20)
 project(domterm LANGUAGES C)
+include(../../../cmake/LibstoneBuild.cmake)
+option(DOMTERM_BUILD_TOOLS "Build the Termscript driver" "${LIBSTONE_BUILD_TOOLS}")
+option(DOMTERM_BUILD_STDLIB "Build the Termscript standard library" OFF)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -22,11 +25,12 @@ set(DOMTERM_AUROCKS ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/aurocks.pl)
 set(DOMTERM_PARSER_C ${CMAKE_CURRENT_BINARY_DIR}/termscript_parser.c)
 add_custom_command(
   OUTPUT ${DOMTERM_PARSER_C}
-  COMMAND ${DOMTERM_PERL} ${DOMTERM_AUROCKS} --entrypoint ts_gram_parse
-          ${CMAKE_CURRENT_SOURCE_DIR}/termscript/Termscript.g
-          > ${DOMTERM_PARSER_C}
+  COMMAND ${CMAKE_COMMAND} -DPERL=${DOMTERM_PERL} -DGENERATOR=${DOMTERM_AUROCKS}
+          -DENTRYPOINT=ts_gram_parse -DGRAMMAR=${CMAKE_CURRENT_SOURCE_DIR}/termscript/Termscript.g
+          -DOUTPUT=${DOMTERM_PARSER_C}
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/GenerateParser.cmake
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/termscript/Termscript.g
-          ${DOMTERM_AUROCKS}
+          ${DOMTERM_AUROCKS} ${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/GenerateParser.cmake
   COMMENT "Generating Termscript parser (aurocks)"
   VERBATIM
 )
@@ -63,6 +67,10 @@ target_include_directories(termscript_standalone PUBLIC
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(termscript_standalone PRIVATE Threads::Threads)
+target_link_libraries(termscript_standalone PRIVATE ${CMAKE_DL_LIBS})
+if(UNIX)
+  target_link_libraries(termscript_standalone PRIVATE m)
+endif()
 
 # ── libtermscript (DomTERM Termscript bindings; links standalone) ─────
 add_library(termscript STATIC
@@ -100,7 +108,8 @@ endif()
 # The generated parser carries benign unused-variable warnings from the
 # aurocks runtime scaffolding; keep hand-written sources warning-clean
 # without drowning the build log.
-set_source_files_properties(${DOMTERM_PARSER_C} PROPERTIES COMPILE_OPTIONS "-w")
+set_source_files_properties(${DOMTERM_PARSER_C} PROPERTIES
+  COMPILE_OPTIONS "$<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-w>")
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(domterm PRIVATE -Wall -Wextra)
@@ -109,29 +118,30 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # ── termscript driver ────────────────────────────────────────────────
-# NOTE: the binary cannot land next to the target (domlibs/domterm/)
+# NOTE: the binary cannot land next to the target's source directory
 # because OUTPUT_NAME "termscript" would collide with the termscript/
 # source directory; it goes to the build-tree bin/ instead.
-add_executable(termscript-driver termscript/driver.c)
-set_target_properties(termscript-driver PROPERTIES
-  OUTPUT_NAME termscript
-  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-target_link_libraries(termscript-driver PRIVATE termscript)
-if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(termscript-driver PRIVATE -Wall -Wextra)
+if(DOMTERM_BUILD_TOOLS)
+  add_executable(termscript-driver termscript/driver.c)
+  set_target_properties(termscript-driver PROPERTIES
+    OUTPUT_NAME termscript
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin
+  )
+  target_link_libraries(termscript-driver PRIVATE termscript)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(termscript-driver PRIVATE -Wall -Wextra)
+  endif()
+  install(TARGETS termscript-driver RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 # ── install ──────────────────────────────────────────────────────────
-include(GNUInstallDirs)
-
 install(TARGETS domterm termscript termscript_standalone
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
-install(TARGETS termscript-driver
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(TARGET termscript_stdlib_stub)
+  install(TARGETS termscript_stdlib_stub ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
 install(FILES domterm.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/domterm
 )

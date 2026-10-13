@@ -19,7 +19,7 @@ A SymAS databank can contain:
 - Opcodes
 - Instruction forms
 - Operand definitions
-- Encoding functions written in an Algol-like language, parsed using `domlibs/domdsl`'s combinatory parser
+- Encoding functions written in an Algol-like language, parsed using MetaTk's `DSLtk` combinatory parser
 - Binary target information
 - Linking information
 - Section information
@@ -460,7 +460,7 @@ marked as hidden from the source syntax.
 
 Encoding functions describe how an instruction form is converted into machine
 code. They are written in an Algol-like language defined by the SymAS
-implementation. This language is parsed using `domlibs/domdsl/DomDSL.hpp`'s combinatory parser.
+implementation. This language is parsed using `third_party/metatk/DSLtk/DSLtk.hpp`'s combinatory parser.
 
 An encoding function may:
 
@@ -1092,4 +1092,3 @@ and encoding definitions. It also allows a single library to support multiple
 architectures, object formats, and unofficial or project-specific assembly
 dialects without requiring every dialect to conform to a universal assembler
 standard.
-

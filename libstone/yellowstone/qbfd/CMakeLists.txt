@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(qBFD LANGUAGES CXX)
 
 # qBFD builds on its own, so the qDSL lookup lives here as well as in the
-# parent project: `cmake -S qobjfile/qobjbfd -B build` is a supported workflow.
+# parent project: `cmake -S libstone/yellowstone/qbfd -B build` also works.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
 include(QobjDSL)
 
@@ -13,7 +13,12 @@ target_include_directories(qbfd INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(qbfd INTERFACE qobjfile::qdsl)
 message(STATUS "qBFD: qDSL headers from ${qobjfile_qdsl_SOURCE}")
 
-option(QBFD_BUILD_TESTS "Build qBFD regression tests" ON)
+if(DEFINED YELLOWSTONE_BUILD_TESTS)
+  set(_qbfd_tests_default "${YELLOWSTONE_BUILD_TESTS}")
+else()
+  set(_qbfd_tests_default "${LIBSTONE_BUILD_TESTS}")
+endif()
+option(QBFD_BUILD_TESTS "Build qBFD regression tests" "${_qbfd_tests_default}")
 option(QBFD_SANITIZE "Enable address and undefined-behavior sanitizers" OFF)
 if(QBFD_BUILD_TESTS)
   enable_testing()

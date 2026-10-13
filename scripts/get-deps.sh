@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
 # get-deps.sh — clone MLVM's Git dependencies into third_party/.
 #
-# Scanned sources:
-#   CMakeLists.txt            (MLVM_ENABLE_CEPHYR / MLVM_ENABLE_OPTILISP /
-#                              MLVM_ENABLE_BINUTILS, Python3, Threads)
-#   cmake/MLVMDependencies.cmake  third_party/sfsexp   (Optilisp reader)
-#   cmake/MLVMCParser.cmake       third_party/cparser-iso11 (Cephyr frontend)
-#   cmake/MLVMUcpp.cmake          third_party/ucpp     (Cephyr preprocessor)
-#   cmake/MLVMBinutils.cmake      third_party/klib + third_party/tomlc99
-#                                 (binutils CLI parsing / target configs;
-#                                  Limestone itself is checked in under
-#                                  libstone/limestone and is NOT cloned)
-#   cmake/FindMLVMTreeSitter.cmake is an unused finder for a system
-#                                 tree-sitter; it is NOT cloned here.
+# Includes the root third_party inventory and the dependencies required by
+# the full libstone build. Existing source snapshots are preserved and verified;
+# --update requires a Git checkout. No dependencies are fetched by CMake.
 #
 # Usage:
-#   ./get-deps.sh [options] [package...]
+#   ./scripts/get-deps.sh [options] [package...]
 #
-#   packages: all (default), sfsexp, cparser-iso11, ucpp, klib, tomlc99
+#   packages: all (default), cparser-iso11, cpp-httplib, ctl, dparser,
+#             kaguya, klib, libglr, lua, metatk, qamrpp, replxx, satie,
+#             sfsexp, termlib, tomlc99, ucpp, equinox-ng, exolangtk,
+#             memtkx, lmdbxx, isocline
 #   options:
 #     --dir DIR    destination root (default: <mlvm>/third_party)
 #     --update     git pull --ff-only in existing checkouts
@@ -26,27 +20,54 @@
 #     -h, --help   this message
 #
 # Examples:
-#   ./get-deps.sh                    # clone everything missing
-#   ./get-deps.sh sfsexp ucpp        # clone just two packages
-#   ./get-deps.sh --update           # fetch latest in existing checkouts
-#   ./get-deps.sh --dir /tmp/tp all  # clone into a custom root
+#   ./scripts/get-deps.sh                   # clone everything missing
+#   ./scripts/get-deps.sh sfsexp ucpp       # clone just two packages
+#   ./scripts/get-deps.sh --update          # update existing checkouts
+#   ./scripts/get-deps.sh --dir /tmp/tp all # use a custom root
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEST_ROOT="${SCRIPT_DIR}/third_party"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DEST_ROOT="${PROJECT_ROOT}/third_party"
 DO_UPDATE=0
 DO_FORCE=0
 DO_VERIFY=1
 PACKAGES=()
 
-SFSEXP_URL="https://github.com/mjsottile/sfsexp.git"
-CPARSER_URL="https://github.com/jkolek/cparser.git"
-UCPP_URL="https://github.com/lpsantil/ucpp.git"
-KLIB_URL="https://github.com/attractivechaos/klib.git"
-TOML_URL="https://github.com/cktan/tomlc99.git"
+ALL_PACKAGES=(cparser-iso11 cpp-httplib ctl dparser kaguya klib libglr lua
+  metatk qamrpp replxx satie sfsexp termlib tomlc99 ucpp
+  equinox-ng exolangtk memtkx lmdbxx isocline)
+
+# Repository names and directory names deliberately differ for a few packages.
+package_info() {
+  case "$1" in
+    cparser-iso11|cparser) NAME=cparser-iso11; REPO=jkolek/cparser; FILES=(include/CParser.h) ;;
+    cpp-httplib) NAME=$1; REPO=yhirose/cpp-httplib; FILES=(httplib.h) ;;
+    ctl) NAME=$1; REPO=glouw/ctl; FILES=(ctl/vec.h) ;;
+    dparser) NAME=$1; REPO=jplevyak/dparser; FILES=(dparse.h parse.c grammar.g.c make_dparser.c) ;;
+    kaguya) NAME=$1; REPO=satoren/kaguya; FILES=(include/kaguya/kaguya.hpp) ;;
+    klib) NAME=$1; REPO=attractivechaos/klib; FILES=(ketopt.h) ;;
+    libglr) NAME=$1; REPO=Chubek/libglr; FILES=(CMakeLists.txt include/glr/glr.h) ;;
+    lua) NAME=$1; REPO=lua/lua; FILES=(lua.h lapi.c lauxlib.c lualib.h) ;;
+    metatk) NAME=$1; REPO=Chubek/metatk; FILES=(DSLtk/DSLtk.hpp EkippX/EkippX.hpp SExprTk/include/SExprTk.hpp) ;;
+    qamrpp) NAME=$1; REPO=Chubek/QaMRpp; FILES=(include/QaMRpp.hpp) ;;
+    replxx) NAME=$1; REPO=AmokHuginnsson/replxx; FILES=(include/replxx.hxx) ;;
+    satie) NAME=$1; REPO=Chubek/Satie; FILES=(include/Satie.hpp src/SatieMemory.cpp) ;;
+    sfsexp) NAME=$1; REPO=mjsottile/sfsexp; FILES=(src/sexp.h) ;;
+    termlib) NAME=$1; REPO=Chubek/termlib; FILES=(termlib.h termlib.c) ;;
+    tomlc99|toml) NAME=tomlc99; REPO=cktan/tomlc99; FILES=(toml.c toml.h) ;;
+    ucpp) NAME=$1; REPO=lpsantil/ucpp; FILES=(cpp.h cpp.c) ;;
+    equinox-ng) NAME=$1; REPO=Chubek/equinox-ng; FILES=(EquinoxNG.hpp) ;;
+    exolangtk) NAME=$1; REPO=Chubek/ExolangTk; FILES=(CMakeLists.txt include/ExtensionTk/etk_api.h) ;;
+    memtkx) NAME=$1; REPO=Chubek/memtkx; FILES=(include/memtkx/space/free_list.hpp) ;;
+    lmdbxx) NAME=$1; REPO=bendiken/lmdbxx; FILES=(lmdb++.h) ;;
+    isocline) NAME=$1; REPO=daanx/isocline; FILES=(src/isocline.c include/isocline.h) ;;
+    *) die "unknown package '$1' (expected: ${ALL_PACKAGES[*]} all)" ;;
+  esac
+}
 
 usage() {
-  sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,/^set -euo/{ /^set -euo/d; s/^# \{0,1\}//; p; }' "${BASH_SOURCE[0]}"
 }
 
 die() { echo "get-deps.sh: error: $*" >&2; exit 1; }
@@ -58,13 +79,14 @@ need_cmd() {
 
 clone_or_update() {
   local name="$1" url="$2" dest="$3"
-  if [ -d "${dest}/.git" ]; then
+  if [ -e "${dest}/.git" ]; then
     if [ "${DO_FORCE}" = "1" ]; then
       info "re-cloning ${name} (forced) -> ${dest}"
       rm -rf "${dest}"
     elif [ "${DO_UPDATE}" = "1" ]; then
       info "updating ${name} in ${dest}"
       git -C "${dest}" pull --ff-only
+      git -C "${dest}" submodule update --init --recursive
       return 0
     else
       info "exists, skipping ${name} (${dest}); use --update to pull"
@@ -74,13 +96,18 @@ clone_or_update() {
     if [ "${DO_FORCE}" = "1" ]; then
       info "re-cloning ${name} (forced) -> ${dest}"
       rm -rf "${dest}"
+    elif [ "${DO_UPDATE}" = "1" ]; then
+      die "${dest} is a source snapshot, not a Git checkout (use --force to replace)"
+    elif [ -d "${dest}" ]; then
+      info "using existing source snapshot ${name} (${dest})"
+      return 0
     else
-      die "path ${dest} exists but is not a git checkout (use --force to replace)"
+      die "path ${dest} is not a directory (use --force to replace)"
     fi
   fi
   info "cloning ${name} from ${url} -> ${dest}"
   mkdir -p "$(dirname "${dest}")"
-  git clone --depth 1 "${url}" "${dest}"
+  git clone --depth 1 --recurse-submodules --shallow-submodules "${url}" "${dest}"
 }
 
 # Verify the exact files the CMake modules check for, so a wrong remote or
@@ -122,42 +149,23 @@ verify_ucpp() {
   [ -z "${missing}" ] || die "ucpp verification failed, missing:${missing}"
 }
 
-verify_klib() {
-  local root="$1"
-  [ -f "${root}/ketopt.h" ] || die "klib verification failed, missing ketopt.h in ${root}"
-}
-
-verify_toml() {
-  local root="$1"
-  [ -f "${root}/toml.c" ] && [ -f "${root}/toml.h" ] \
-    || die "tomlc99 verification failed, missing toml.c/toml.h in ${root}"
-}
-
 fetch_one() {
-  local pkg="$1"
-  case "${pkg}" in
-    sfsexp)
-      clone_or_update "sfsexp" "${SFSEXP_URL}" "${DEST_ROOT}/sfsexp"
-      [ "${DO_VERIFY}" = "1" ] && verify_sfsexp "${DEST_ROOT}/sfsexp"
-      ;;
-    cparser-iso11|cparser)
-      clone_or_update "cparser-iso11" "${CPARSER_URL}" "${DEST_ROOT}/cparser-iso11"
-      [ "${DO_VERIFY}" = "1" ] && verify_cparser "${DEST_ROOT}/cparser-iso11"
-      ;;
-    ucpp)
-      clone_or_update "ucpp" "${UCPP_URL}" "${DEST_ROOT}/ucpp"
-      [ "${DO_VERIFY}" = "1" ] && verify_ucpp "${DEST_ROOT}/ucpp"
-      ;;
-    klib)
-      clone_or_update "klib" "${KLIB_URL}" "${DEST_ROOT}/klib"
-      [ "${DO_VERIFY}" = "1" ] && verify_klib "${DEST_ROOT}/klib"
-      ;;
-    tomlc99|toml)
-      clone_or_update "tomlc99" "${TOML_URL}" "${DEST_ROOT}/tomlc99"
-      [ "${DO_VERIFY}" = "1" ] && verify_toml "${DEST_ROOT}/tomlc99"
-      ;;
-    *) die "unknown package '${pkg}' (expected: sfsexp cparser-iso11 ucpp klib tomlc99 all)" ;;
-  esac
+  local NAME REPO file
+  local -a FILES
+  package_info "$1"
+  local dest="${DEST_ROOT}/${NAME}"
+  clone_or_update "${NAME}" "https://github.com/${REPO}.git" "${dest}"
+  if [ "${DO_VERIFY}" = "1" ]; then
+    for file in "${FILES[@]}"; do
+      [ -f "${dest}/${file}" ] || die "${NAME} verification failed, missing ${file} in ${dest}"
+    done
+    case "${NAME}" in
+      sfsexp) verify_sfsexp "${dest}" ;;
+      cparser-iso11) verify_cparser "${dest}" ;;
+      ucpp) verify_ucpp "${dest}" ;;
+    esac
+  fi
+  return 0
 }
 
 while [ "$#" -gt 0 ]; do
@@ -176,19 +184,25 @@ while [ "$#" -gt 0 ]; do
 done
 
 need_cmd git
+[ -n "${DEST_ROOT}" ] || die "--dir must not be empty"
+
+# Validate the entire request before cloning or replacing anything.
+for pkg in "${PACKAGES[@]}"; do
+  if [ "${pkg}" != "all" ]; then package_info "${pkg}"; fi
+done
 
 if [ "${#PACKAGES[@]}" -eq 0 ] || { [ "${#PACKAGES[@]}" -eq 1 ] && [ "${PACKAGES[0]}" = "all" ]; }; then
-  PACKAGES=(sfsexp cparser-iso11 ucpp klib tomlc99)
+  PACKAGES=("${ALL_PACKAGES[@]}")
 fi
 
 for pkg in "${PACKAGES[@]}"; do
   if [ "${pkg}" = "all" ]; then
-    for p in sfsexp cparser-iso11 ucpp klib tomlc99; do fetch_one "${p}"; done
+    for p in "${ALL_PACKAGES[@]}"; do fetch_one "${p}"; done
   else
     fetch_one "${pkg}"
   fi
 done
 
 info "done -> ${DEST_ROOT}"
-info "configure with: cmake -S . -B build (defaults resolve to ${DEST_ROOT})"
-info "overrides: -DMLVM_THIRD_PARTY_DIR=... -DMLVM_SFSEXP_SOURCE_DIR=... -DMLVM_CPARSER_SOURCE_DIR=... -DMLVM_UCPP_SOURCE_DIR=... -DMLVM_KLIB_SOURCE_DIR=... -DMLVM_TOML_SOURCE_DIR=..."
+info "configure with: cmake -S \"${PROJECT_ROOT}\" -B build -DMLVM_THIRD_PARTY_DIR=\"${DEST_ROOT}\""
+info "full libstone build: add -DMLVM_BUILD_LIBSTONE=ON"

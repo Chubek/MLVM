@@ -41,13 +41,13 @@ Python imports work with `qarch.simple_isa` from the repository root.
 
 ## Header-only C++ API
 
-`simple_isa.hpp` requires C++20 and `DomDSL.hpp`. The
-lexer uses DomDSL's `ParsecInput`, `Parser`, and `run_parser`, while `SourceDSL`
+`simple_isa.hpp` requires C++20 and MetaTk's `DSLtk.hpp`. The
+lexer uses DSLtk's `ParsecInput`, `Parser`, and `run_parser`, while `SourceDSL`
 extends its C++ DSL base and constructs the same validated model as `parse()`.
 Include both directories when compiling outside CMake:
 
 ```sh
-c++ -std=c++20 -I isa -I /path/to/domlibs/domdsl app.cpp -o app
+c++ -std=c++20 -I isa -I ../../third_party/metatk/DSLtk app.cpp -o app
 ```
 
 ```cpp

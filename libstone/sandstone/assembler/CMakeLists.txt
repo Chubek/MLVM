@@ -13,19 +13,20 @@ target_include_directories(sandstone_assembler
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/sandstone>
 )
 target_link_libraries(sandstone_assembler PUBLIC sandstone)
-target_compile_options(sandstone_assembler PRIVATE -Wall -Wextra)
+libstone_warnings(sandstone_assembler)
 # dlopen() backend for the optional Lua hook; no link-time Lua needed.
-find_library(SANDSTONE_DL_LIB dl)
-if(SANDSTONE_DL_LIB)
-  target_link_libraries(sandstone_assembler PRIVATE ${SANDSTONE_DL_LIB})
+target_link_libraries(sandstone_assembler PRIVATE ${CMAKE_DL_LIBS})
+
+if(SANDSTONE_BUILD_TOOLS OR SANDSTONE_BUILD_TESTS)
+  add_executable(sandstone-as driver.c)
+  target_link_libraries(sandstone-as PRIVATE sandstone_assembler)
+  libstone_warnings(sandstone-as)
 endif()
 
-add_executable(sandstone-as driver.c)
-target_link_libraries(sandstone-as PRIVATE sandstone_assembler)
-target_compile_options(sandstone-as PRIVATE -Wall -Wextra)
-
-install(TARGETS sandstone-as sandstone_assembler
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+if(SANDSTONE_BUILD_TOOLS)
+  install(TARGETS sandstone-as RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+install(TARGETS sandstone_assembler
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 install(FILES assembler.h assembler.hpp

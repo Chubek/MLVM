@@ -4,14 +4,14 @@ PROJECT_NUMBER         = @PROJECT_VERSION@
 PROJECT_BRIEF          = "SymAS-driven assembler framework"
 OUTPUT_DIRECTORY       = @CMAKE_CURRENT_BINARY_DIR@
 INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@ \
-                         @CMAKE_SOURCE_DIR@/SYMAS.md \
-                         @CMAKE_SOURCE_DIR@/README.md \
-                         @CMAKE_SOURCE_DIR@/GUIDE.md \
-                         @CMAKE_SOURCE_DIR@/INSTALL.md \
-                         @CMAKE_SOURCE_DIR@/include \
-                         @CMAKE_SOURCE_DIR@/assembler \
-                         @CMAKE_SOURCE_DIR@/compiler/include \
-                         @CMAKE_SOURCE_DIR@/compiler/src/spec_compiler.cpp
+                         @Sandstone_SOURCE_DIR@/SYMAS.md \
+                         @Sandstone_SOURCE_DIR@/README.md \
+                         @Sandstone_SOURCE_DIR@/GUIDE.md \
+                         @Sandstone_SOURCE_DIR@/INSTALL.md \
+                         @Sandstone_SOURCE_DIR@/include \
+                         @Sandstone_SOURCE_DIR@/assembler \
+                         @Sandstone_SOURCE_DIR@/compiler/include \
+                         @Sandstone_SOURCE_DIR@/compiler/src/spec_compiler.cpp
 FILE_PATTERNS          = *.h *.hpp *.c *.cpp *.md
 RECURSIVE              = NO
 USE_MDFILE_AS_MAINPAGE = @CMAKE_CURRENT_SOURCE_DIR@/index.md

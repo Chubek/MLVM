@@ -1,5 +1,5 @@
 # Public API layout mirrors the source tree, including relative header includes.
-set(limestone_install_targets limestone_foundation limestone_parsers metacode
+set(limestone_install_targets limestone_foundation limestone_parsers limestone_satie_runtime limestone_vmweave_lua metacode
   schedrow regtl regtl_schedrow limeburg unisel limeburg_umd limeburg_infobank
   limeburg_text schedrow_text regtl_text bin2bin bin2bin_codegen bin2bin_object machineir_bridge machineir_native
   tunah tunah_unisel tunah_bin2bin tunah_stages traceml exolayer vmweave limestone_core limestone_il limestone_optimization limestone_object limestone_traceml_api limestone_selection_contracts)
@@ -10,7 +10,11 @@ foreach(target IN LISTS limestone_install_targets)
 endforeach()
 # These static implementations are link dependencies, never public parser types.
 list(APPEND limestone_install_targets limestone_parser_tables limestone_dparse)
-install(TARGETS ${limestone_install_targets} limestone-cli limeburg-generate-specs vmweave-cli EXPORT LimestoneTargets
+if(LIMESTONE_BUILD_TOOLS)
+  install(TARGETS limestone-cli limeburg-generate-specs vmweave-cli
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+install(TARGETS ${limestone_install_targets} EXPORT LimestoneTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -24,7 +28,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/vmweave/vmweave.hpp ${PROJECT_SOURCE_DIR}/vm
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/vmweave/adapters/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vmweave/adapters
   FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 install(FILES ${limestone_ast_headers} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/parsers)
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/third_party/exolangtk/include/
+install(DIRECTORY ${MLVM_EXOLANGTK_SOURCE_DIR}/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/limestone/vendor/exolangtk
   FILES_MATCHING PATTERN "*.h")
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/metacode/infobank/ DESTINATION ${CMAKE_INSTALL_DATADIR}/limestone/infobank)
@@ -44,9 +48,11 @@ foreach(component IN ITEMS limestone metacode/machine-ir schedrow regtl limeburg
 endforeach()
 install(FILES ${PROJECT_SOURCE_DIR}/tunah/BENCHMARKS.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/limestone/tunah)
 install(FILES ${PROJECT_SOURCE_DIR}/bin2bin/OBJECTS.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/limestone/bin2bin)
-install(FILES ${PROJECT_SOURCE_DIR}/third_party/exolangtk/docs/manual/19_exolayer.md
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/limestone)
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/third_party/exolangtk/docs/manual/
+if(EXISTS "${MLVM_EXOLANGTK_SOURCE_DIR}/docs/manual/19_exolayer.md")
+  install(FILES ${MLVM_EXOLANGTK_SOURCE_DIR}/docs/manual/19_exolayer.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/limestone)
+endif()
+install(DIRECTORY ${MLVM_EXOLANGTK_SOURCE_DIR}/docs/manual/
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/limestone/third_party/exolangtk/docs/manual
   FILES_MATCHING PATTERN "*.md")
 configure_package_config_file(${PROJECT_SOURCE_DIR}/cmake/LimestoneConfig.cmake.in

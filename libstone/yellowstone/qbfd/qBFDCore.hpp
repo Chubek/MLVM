@@ -677,7 +677,29 @@ inline uint64_t checkedAdd(uint64_t a, uint64_t b) {
 namespace qbfd::query {
 // Queries return values, so a collected result never dangles after an Opened
 // dies.
-struct ObjectDSL : ::dsl::DSL<ObjectDSL, ::dsl::Pipeline, ::dsl::Operators> {};
+// DSLtk's Predicate composition currently uses its injected class name, which
+// retains the original callable type instead of deducing the composed lambda.
+// Keep the workaround at the query boundary and reuse DSLtk's storage/call API.
+template <class F> struct QueryPredicate : ::dsl::Predicate<F> {
+  using ::dsl::Predicate<F>::Predicate;
+  template <class G> constexpr auto operator&(QueryPredicate<G> other) const {
+    auto composed = [a = this->fn, b = other.fn](auto&& v) { return a(v) && b(v); };
+    return QueryPredicate<decltype(composed)>{std::move(composed)};
+  }
+  template <class G> constexpr auto operator|(QueryPredicate<G> other) const {
+    auto composed = [a = this->fn, b = other.fn](auto&& v) { return a(v) || b(v); };
+    return QueryPredicate<decltype(composed)>{std::move(composed)};
+  }
+  constexpr auto operator!() const {
+    auto composed = [a = this->fn](auto&& v) { return !a(v); };
+    return QueryPredicate<decltype(composed)>{std::move(composed)};
+  }
+};
+struct ObjectDSL : ::dsl::DSL<ObjectDSL, ::dsl::Pipeline, ::dsl::Operators> {
+  template <class F> static constexpr auto make_pred(F&& fn) {
+    return QueryPredicate<std::decay_t<F>>{std::forward<F>(fn)};
+  }
+};
 inline auto named(std::string name) {
   return ObjectDSL::make_pred(
       [name = std::move(name)](const auto& item) { return item.name == name; });

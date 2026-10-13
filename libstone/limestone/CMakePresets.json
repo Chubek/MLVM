@@ -1,5 +1,6 @@
 {
-  "version": 6,
+  "version": 2,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
   "configurePresets": [
     {
       "name": "default",
@@ -7,7 +8,7 @@
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "BUILD_TESTING": "ON"
+        "LIMESTONE_BUILD_TESTS": "ON"
       }
     }
   ],

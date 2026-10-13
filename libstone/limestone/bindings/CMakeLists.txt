@@ -13,7 +13,7 @@ set(LIMESTONE_PYTHON_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/limestone/python" CACH
   "Install directory for the optional Python module")
 install(TARGETS limestone_python LIBRARY DESTINATION "${LIMESTONE_PYTHON_INSTALL_DIR}")
 install(FILES "${CMAKE_SWIG_OUTDIR}/limestone.py" DESTINATION "${LIMESTONE_PYTHON_INSTALL_DIR}")
-if(BUILD_TESTING)
+if(LIMESTONE_BUILD_TESTS)
   add_test(NAME python-bindings COMMAND "${Python3_EXECUTABLE}"
     "${PROJECT_SOURCE_DIR}/tests/python_bindings.py" "${PROJECT_SOURCE_DIR}/tests/fixtures")
   set_tests_properties(python-bindings PROPERTIES ENVIRONMENT "PYTHONPATH=${CMAKE_SWIG_OUTDIR}")

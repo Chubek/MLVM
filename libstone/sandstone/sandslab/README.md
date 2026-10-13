@@ -3,7 +3,7 @@
 SandSLAB is a header-only C++20 machine-near code generator. Its IR is a
 sequence of the named instruction forms and operands defined by `isa/*.isa`,
 plus labels and local relative fixups. The existing ISA loader performs register,
-operand, range, alignment, and encoding validation. DomDSL supplies the
+operand, range, alignment, and encoding validation. MetaTk's DSLtk supplies the
 compile-time string tags and pipeline mixin, and the ISA source parser uses its
 parser combinators.
 
@@ -13,14 +13,13 @@ The repository build enables `SANDSTONE_BUILD_SANDSLAB` by default. To build jus
 SandSLAB and the example from the repository root:
 
 ```sh
-cmake -S sandslab -B build-sandslab \
-  -DDOMDSL_INCLUDE_DIR=/mnt/warble/domweave/domlibs/domdsl
+cmake -S libstone/sandstone/sandslab -B build-sandslab
 cmake --build build-sandslab
 ctest --test-dir build-sandslab --output-on-failure
 ```
 
-DomDSL is discovered automatically in the sibling `domlibs/domdsl` directory;
-`DOMDSL_INCLUDE_DIR` overrides that location. Link the interface target
+DSLtk is loaded from MLVM's `third_party/metatk/DSLtk` directory;
+`MLVM_METATK_SOURCE_DIR` overrides the MetaTk checkout. Link the interface target
 `Sandstone::sandslab` (or `sandslab`) in a source build. Installation provides
 the headers, ISA data, `forthcc`, and `find_package(SandSLAB CONFIG REQUIRED)`.
 The installed interface target is `Sandstone::sandslab`.
@@ -45,7 +44,7 @@ auto code = program.compile();
 encoding and syntax come from the loaded ISA. It can be subclassed as above or
 used directly. `emit("add", operands)` is the runtime equivalent. `Program`
 owns an immutable target snapshot and retains the IR, accessible via `nodes()`.
-Compilation is repeatable and does not mutate the IR. DomDSL pipelines can use
+Compilation is repeatable and does not mutate the IR. DSLtk pipelines can use
 `program.wrap(value) | dsl::pipe(transform)` for frontend transformations.
 
 `assembly()` renders programs without fixups, including text-only targets.

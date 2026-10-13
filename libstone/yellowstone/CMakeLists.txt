@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
-project(qobjfile LANGUAGES C CXX)
+project(Yellowstone VERSION 0.1.0 LANGUAGES C CXX)
+include(../cmake/LibstoneBuild.cmake)
+option(YELLOWSTONE_BUILD_TOOLS "Build Yellowstone command-line tools" "${LIBSTONE_BUILD_TOOLS}")
+option(YELLOWSTONE_BUILD_TESTS "Build Yellowstone tests" "${LIBSTONE_BUILD_TESTS}")
+if(YELLOWSTONE_BUILD_TESTS)
+  enable_testing()
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(QobjDSL)
@@ -8,7 +14,6 @@ option(QOBJFILE_WERROR "Treat warnings as errors" OFF)
 option(QOBJFILE_DOMTERM "Build DomTERM terminal and Termscript support" ON)
 
 if(QOBJFILE_DOMTERM)
-  set(DOMWEAVE_BUILD_TERMSCRIPT_STDLIB OFF CACHE BOOL "" FORCE)
   add_subdirectory(external/domterm ${CMAKE_CURRENT_BINARY_DIR}/domterm)
 endif()
 
@@ -49,6 +54,7 @@ add_subdirectory(qbfd)
 
 # Directory names differ from tool names (dump -> qobjdump, ...), so the
 # mapping is explicit rather than assumed.
+if(YELLOWSTONE_BUILD_TOOLS)
 qobjfile_tool(qobjdump dump)
 qobjfile_tool(qobjsize size)
 qobjfile_tool(qobjcp copy)
@@ -63,18 +69,24 @@ foreach(reader readelf readexe readmacho)
   target_link_libraries(${reader} PRIVATE qobjcommon qbfd::qbfd)
   target_include_directories(${reader} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endforeach()
+endif()
 
 add_library(binscript STATIC binscript/binscript.c)
 target_include_directories(binscript PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/binscript)
+if(YELLOWSTONE_BUILD_TOOLS)
 add_executable(binscript_cli binscript/main.c)
 target_link_libraries(binscript_cli PRIVATE binscript)
 set_target_properties(binscript_cli PROPERTIES OUTPUT_NAME binscript)
+endif()
 find_program(YELLOWSTONE_PERL perl)
 if(YELLOWSTONE_PERL)
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/binscript_parser.c
-    COMMAND ${YELLOWSTONE_PERL} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/aurocks.pl --entrypoint bs_parse
-            ${CMAKE_CURRENT_SOURCE_DIR}/binscript/binscript.g > ${CMAKE_CURRENT_BINARY_DIR}/binscript_parser.c
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/aurocks.pl ${CMAKE_CURRENT_SOURCE_DIR}/binscript/binscript.g)
+    COMMAND ${CMAKE_COMMAND} -DPERL=${YELLOWSTONE_PERL}
+            -DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/scripts/aurocks.pl
+            -DENTRYPOINT=bs_parse -DGRAMMAR=${CMAKE_CURRENT_SOURCE_DIR}/binscript/binscript.g
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/binscript_parser.c
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateParser.cmake
+    DEPENDS scripts/aurocks.pl binscript/binscript.g cmake/GenerateParser.cmake VERBATIM)
   add_custom_target(binscript_parser DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/binscript_parser.c)
   add_dependencies(binscript binscript_parser)
 endif()
@@ -84,8 +96,7 @@ add_subdirectory(ld)
 
 # The command-line tools are only meaningful once the library's own tests pass,
 # so they are registered as tests too rather than merely built.
-include(CTest)
-if(BUILD_TESTING)
+if(YELLOWSTONE_BUILD_TESTS AND YELLOWSTONE_BUILD_TOOLS)
   add_test(NAME qobjfile_tools_help
            COMMAND qobjdump --help)
   add_test(NAME qobjstr_help COMMAND qobjstr --help)
@@ -105,14 +116,19 @@ if(BUILD_TESTING)
                    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-ld-tests.cmake)
 endif()
 
-install(TARGETS qobjdump qobjsize qobjcp qobjstr qobjstrip qobjnm qobjar qobjld readelf readexe readmacho binscript_cli
-        RUNTIME DESTINATION bin)
-install(TARGETS qld
-        ARCHIVE DESTINATION lib
-        LIBRARY DESTINATION lib)
-install(DIRECTORY qbfd/ DESTINATION include/qbfd
+if(YELLOWSTONE_BUILD_TOOLS)
+  install(TARGETS qobjdump qobjsize qobjcp qobjstr qobjstrip qobjnm qobjar qobjld readelf readexe readmacho binscript_cli
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+install(TARGETS qld binscript
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(DIRECTORY qbfd/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qbfd
         FILES_MATCHING PATTERN "*.hpp")
-install(FILES common/qdsl.hpp common/isa.hpp
-        DESTINATION include/qobjfile)
+install(FILES common/qdsl.hpp common/isa.hpp "${MLVM_METATK_SOURCE_DIR}/DSLtk/DSLtk.hpp"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qobjfile)
+# qBFDCore.hpp retains its source-compatible ../common/qdsl.hpp include.
+install(FILES common/qdsl.hpp "${MLVM_METATK_SOURCE_DIR}/DSLtk/DSLtk.hpp"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/common)
 install(FILES ld/ld.h ld/ld.hpp
-        DESTINATION include/qobjld)
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qobjld)

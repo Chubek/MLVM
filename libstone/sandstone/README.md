@@ -61,5 +61,5 @@ An `add` assembles identically through the `.symas` bank and the small
 The C++20 [SandSLAB library and Forth compiler example](sandslab/README.md)
 use the instruction forms in `isa/` as a machine-near IR, with assembly and
 binary emission and local branch fixups. Build with
-`SANDSTONE_BUILD_SANDSLAB=ON` (default); set `DOMDSL_INCLUDE_DIR` if DomDSL is
-outside the sibling `domlibs/domdsl` directory.
+`SANDSTONE_BUILD_SANDSLAB=ON` (default). DSLtk comes from MLVM's
+`third_party/metatk/DSLtk`; set `MLVM_METATK_SOURCE_DIR` to use another checkout.

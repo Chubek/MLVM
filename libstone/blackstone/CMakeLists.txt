@@ -1,9 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 project(Blackstone VERSION 0.1.0 LANGUAGES C)
-include(CTest)
-include(GNUInstallDirs)
-find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
-set(BLACKSTONE_DPARSER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/dparser" CACHE PATH "DParser sources")
+include(../cmake/LibstoneBuild.cmake)
+option(BLACKSTONE_BUILD_TOOLS "Build the Blackstone parser and native example" "${LIBSTONE_BUILD_TOOLS}")
+option(BLACKSTONE_BUILD_TESTS "Build Blackstone tests" "${LIBSTONE_BUILD_TESTS}")
+if(BLACKSTONE_BUILD_TESTS)
+  enable_testing()
+  find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+endif()
+if(BLACKSTONE_BUILD_TOOLS OR BLACKSTONE_BUILD_TESTS)
+set(BLACKSTONE_DPARSER_DIR "${MLVM_DPARSER_SOURCE_DIR}" CACHE PATH "DParser sources")
+libstone_require_files(BLACKSTONE_DPARSER_DIR dparse.h parse.c grammar.g.c make_dparser.c)
 set(D ${BLACKSTONE_DPARSER_DIR})
 add_library(blackstone_dparse STATIC ${D}/arg.c ${D}/parse.c ${D}/scan.c
   ${D}/dsymtab.c ${D}/util.c ${D}/read_binary.c ${D}/dparse_tree.c ${D}/version.c)
@@ -18,7 +24,8 @@ add_custom_command(OUTPUT ${TABLES}
   DEPENDS blackstone_make_dparser grammar/blackstone.g VERBATIM)
 add_executable(blackstone-parser src/parser.c ${TABLES})
 target_link_libraries(blackstone-parser PRIVATE blackstone_dparse)
-target_compile_options(blackstone-parser PRIVATE -Wall -Wextra)
+libstone_warnings(blackstone-parser)
+endif()
 add_library(blackstone SHARED
   src/api.c src/profile.c src/bincode.c src/driver.c
   concern/module.c concern/loader.c concern/apply.c
@@ -31,19 +38,24 @@ target_include_directories(blackstone PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/blackstone>
   PRIVATE src profile)
-target_compile_options(blackstone PRIVATE -Wall -Wextra -Wpedantic)
+libstone_warnings(blackstone)
 set_target_properties(blackstone PROPERTIES VERSION 0.1.0 SOVERSION 0)
+if(BLACKSTONE_BUILD_TOOLS OR BLACKSTONE_BUILD_TESTS)
 add_executable(blackstone-native-example examples/native_profile.c)
 target_link_libraries(blackstone-native-example PRIVATE Blackstone::Runtime)
-target_compile_options(blackstone-native-example PRIVATE -Wall -Wextra -Wpedantic)
-install(TARGETS blackstone blackstone-parser
+libstone_warnings(blackstone-native-example)
+endif()
+if(BLACKSTONE_BUILD_TOOLS)
+  install(TARGETS blackstone-parser RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+install(TARGETS blackstone
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/blackstone)
-if(BUILD_TESTING)
+if(BLACKSTONE_BUILD_TESTS)
   add_executable(blackstone-native-test tests/native_runtime.c)
   target_link_libraries(blackstone-native-test PRIVATE Blackstone::Runtime)
-  target_compile_options(blackstone-native-test PRIVATE -Wall -Wextra -Wpedantic)
+  libstone_warnings(blackstone-native-test)
   add_test(NAME blackstone-native COMMAND blackstone-native-test)
   add_test(NAME blackstone-native-example COMMAND blackstone-native-example)
   add_test(NAME blackstone-examples COMMAND ${Python3_EXECUTABLE} -B examples/run_examples.py --engine both)
