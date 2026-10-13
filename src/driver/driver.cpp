@@ -4,6 +4,7 @@
 #include <mlvm/mlvm.hpp>
 #include <mlvm/object.hpp>
 #include <mlvm/codegen.hpp>
+#include <mlvm/sched.hpp>
 #ifdef MLVM_HAS_OPTILISP
 #include <mlvm/optilisp/pass.hpp>
 #endif
@@ -81,7 +82,9 @@ void help(std::string_view name) {
     std::cout << name << " (MLVM " << version << ")\nUsage: " << name << " [options] FILE...\n"
               << "Common: --help --version --color=never @RESPONSE --\n";
     if (name == "mlvm") std::cout << "  --verify --print --passes=constant-fold,canonicalize,dce --dump-passes -o FILE\n"
+        << "  --schedule=FILE.sched --result=NODE --trace (or pass a .sched file directly)\n"
         << "  --blackstone-dir=DIR --kernel-file=FILE --apply-kernel=ID (repeatable)\n";
+    else if (name == "mlvm-sched") std::cout << "  FILE.sched --check --dot --trace --result=NODE -o FILE\n";
     else if (name == "mlvm-as") std::cout << "  --target=x86_64-unknown-linux-gnu -o FILE (required)\n";
     else if (name == "mlvm-ld") std::cout << "  -r (relocatable) -e SYMBOL (default _start) -o FILE (required)\n";
     else if (name == "mlvm-ar") std::cout << "  t ARCHIVE | q -o ARCHIVE FILE... (deterministic short-name archive)\n";
@@ -142,6 +145,8 @@ struct Options {
     std::vector<std::string> protected_inputs;
     std::string output, entry = "_start", passes, remove, only, rename, mode, archive_command;
     std::string blackstone;
+    std::string schedule, result;
+    bool trace = false, schedule_check = false, schedule_dot = false;
     std::vector<std::string> kernel_files;
     std::vector<KernelRequest> kernel_applications;
     bool relocatable = false, dump = false, raw = false, disassemble = false;
@@ -201,13 +206,14 @@ Options options(std::string_view name, const std::vector<std::string>& args) {
         if (!positional && arg == "--") { positional = true; continue; }
         if (!positional && arg == "--color=never") continue;
         if (!positional && arg == "-o") {
-            if (name != "mlvm" && name != "cephyr" && name != "mlvm-as" && name != "mlvm-ld" && name != "mlvm-ar" && name != "mlvm-objcopy" && name != "mlvm-strip") throw Error(2, "-o is unsupported by this tool");
+            if (name != "mlvm" && name != "mlvm-sched" && name != "cephyr" && name != "mlvm-as" && name != "mlvm-ld" && name != "mlvm-ar" && name != "mlvm-objcopy" && name != "mlvm-strip") throw Error(2, "-o is unsupported by this tool");
             result.output = next(); continue;
         }
         if (!positional && (arg.starts_with("--target=") || (name == "cephyr" && arg == "-target"))) {
             if (name != "mlvm-as" && name != "cephyr") throw Error(2, "target selection unsupported by this tool");
             const auto target = arg == "-target" ? next() : arg.substr(9);
-            if (!TargetRegistry::builtins().find(target)) throw Error(2, "unsupported target: " + target);
+            auto registry = TargetRegistry::builtins(); auto* description = registry.find(target);
+            if (!description || !description->assembler) throw Error(2, "unsupported assembler target: " + target);
             continue;
         }
         if (!positional && (name == "mlvm" || name == "cephyr")) {
@@ -216,6 +222,13 @@ Options options(std::string_view name, const std::vector<std::string>& args) {
             }
             if (arg.starts_with("--apply-kernel=")) { result.kernel_applications.push_back({arg.substr(15), false}); continue; }
             if (arg.starts_with("--blackstone-dir=")) { result.blackstone = arg.substr(17); continue; }
+        }
+        if (!positional && (name == "mlvm" || name == "mlvm-sched")) {
+            if (arg.starts_with("--schedule=")) { result.schedule = arg.substr(11); continue; }
+            if (arg.starts_with("--result=")) { result.result = arg.substr(9); continue; }
+            if (arg == "--trace") { result.trace = true; continue; }
+            if (arg == "--check") { result.schedule_check = true; continue; }
+            if (arg == "--dot") { result.schedule_dot = true; continue; }
         }
         if (!positional && name == "mlvm") {
             if (arg == "--verify" || arg == "--print") { result.mode = arg; continue; }
@@ -306,7 +319,7 @@ Options options(std::string_view name, const std::vector<std::string>& args) {
         if (!positional && arg.starts_with('-')) throw Error(2, "unsupported option: " + arg);
         result.inputs.push_back(arg);
     }
-    if (result.inputs.empty()) throw Error(2, "expected input file");
+    if (result.inputs.empty() && result.schedule.empty()) throw Error(2, "expected input file");
     if (name == "cephyr" && (!result.kernel_files.empty() || !result.kernel_applications.empty() || !result.blackstone.empty()) &&
         !result.mode.empty() && result.mode != "--emit-ir" && result.mode != "-S" && result.mode != "-c")
         throw Error(2, "Cephyr kernels require compilation or linking");
@@ -387,6 +400,33 @@ int execute_tool(std::string_view name, const Options& opts, SourceManager& sour
         for (Identifier id = 1; const auto* source = sources.file(id); ++id) result.push_back(source->name);
         return result;
     };
+    if (name == "mlvm-sched" || (name == "mlvm" && (!opts.schedule.empty() ||
+        (opts.inputs.size() == 1 && std::filesystem::path(opts.inputs[0]).extension() == ".sched")))) {
+        std::string path = opts.schedule;
+        if (path.empty()) { one(); path = opts.inputs[0]; }
+        else if (!opts.inputs.empty()) throw Error(2, "--schedule takes its inputs from the orchestrator; do not pass positional IR files");
+        auto registry = sched::Registry::builtins(context); auto graph = sched::load(path, registry, diagnostics);
+        if (!graph) return 1;
+        if (opts.schedule_dot) { write_text(opts.output, graph->dot(diagnostics), {path}); return 0; }
+        if (opts.schedule_check) return 0;
+        auto order = graph->order(diagnostics);
+        std::string selected = opts.result.empty() ? (order.empty() ? "" : order.back()) : opts.result;
+        if (!selected.empty() && std::find(order.begin(), order.end(), selected) == order.end()) throw Error(2, "unknown result node: " + selected);
+        sched::Result result;
+        auto base = std::filesystem::absolute(path).parent_path();
+        if (!sched::Scheduler{}.run(*graph, result, diagnostics, base)) return 1;
+        if (opts.trace) for (const auto& event : result.events)
+            std::cerr << event.node << ": " << event.action << (event.rewrites ? " [rewrite]" : "")
+                      << (event.source.empty() ? "" : " " + event.source) << '\n';
+        if (!selected.empty()) {
+            const auto& artifact = result.artifacts.at(selected);
+            auto inputs = protected_inputs(); inputs.push_back(path);
+            for (const auto& file : result.read_paths) inputs.push_back(file.string());
+            if (artifact.kind == "bytes") write(opts.output, artifact.get<std::vector<std::uint8_t>>(), inputs);
+            else write_text(opts.output, sched::print_artifact(artifact), inputs);
+        }
+        return 0;
+    }
     auto kernels = [&](Module& module, bool execute) {
         std::map<std::string, std::string> loaded;
         auto load = [&](const std::string& path, bool declaration = false) -> const std::string& {

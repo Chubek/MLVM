@@ -17,7 +17,10 @@ if(NOT MLVM_ENABLE_BINUTILS STREQUAL "OFF")
                  libstone/limestone/bin2bin/object.hpp libstone/limestone/metacode/metacode.hpp
                  libstone/limestone/limestone/foundation.hpp
                  "${MLVM_KLIB_SOURCE_DIR}/ketopt.h"
-                 "${MLVM_TOML_SOURCE_DIR}/toml.c" "${MLVM_TOML_SOURCE_DIR}/toml.h")
+                  "${MLVM_TOML_SOURCE_DIR}/toml.c" "${MLVM_TOML_SOURCE_DIR}/toml.h")
+    if(NOT IS_ABSOLUTE "${source}")
+      set(source "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+    endif()
     if(NOT EXISTS "${source}")
       if(MLVM_ENABLE_BINUTILS STREQUAL "ON")
         message(FATAL_ERROR "Library-backed binary tools require ${source}")

@@ -1,0 +1,13 @@
+mlvm 1 {
+  block() {
+    "builtin.func"() ["sym"="pipeline", "result"="i32"] region {
+      block(%x:"i32") {
+        %three:"i32" = "arith.constant"() ["value"="3"];
+        %four:"i32" = "arith.constant"() ["value"="4"];
+        %a:"i32" = "arith.addi"(%x, %three) [];
+        %b:"i32" = "arith.addi"(%a, %four) [];
+        "func.return"(%b) [];
+      }
+    };
+  }
+}

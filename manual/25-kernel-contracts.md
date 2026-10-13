@@ -2,48 +2,48 @@
 
 [Contents](README.md) · [Next: Host optimizers](26-host-optimizers.md)
 
-Optilisp validation has several layers. The reader establishes valid bounded
-syntax. The loader checks declarations and registry references. A backend checks
-supported transformations and proves applicability to actual candidates.
+Validation has three boundaries:
 
-## Reader and loader
+1. Blackstone's generated DParser frontend checks `.bst` syntax and source spans.
+2. `bs_profile_compile` resolves concerns, operators, capabilities and inheritance,
+   and validates capture numbering, signature/match trees, construction and guards.
+3. The typed adapter supplies concrete value semantics and tri-state facts for
+   each candidate. Only `BS_TRUE` permits a guard to succeed.
 
-The reader accepts lists, symbols, keywords, strings, decimal numbers, booleans,
-`nil`, and semicolon comments. Numbers retain their source spelling. Quote syntax,
-binary atoms, atom escapes, empty keywords, and raw NUL bytes are rejected.
-Byte, node, and nesting limits are checked before AST publication.
+MLVM rejects embedded NUL and files larger than 16 MiB at the source boundary.
+Native rule trees and runtime traversal are bounded by Blackstone's limits.
+Unknown symbols, unsupported sorts/refinements, forward identity captures,
+duplicate rules and inheritance cycles produce diagnostics.
 
-Loader validation covers metadata, documentation, duplicate fields/IDs,
-stage compatibility, capability/analysis references, contradictory conditions,
-analysis contracts, transformation shape, and prerequisite cycles. A diagnostic
-discards the loaded catalog; installation revalidates before invoking a backend.
+## Integer execution domain
 
-`Loader::Profile::strict` is the supplemental default. The explicit `blackstone`
-profile accepts the original six-topic documentation schema. When its analysis
-contract is absent, declared analyses are consumed, all registered analyses are
-invalidated, and none are preserved. It does not repair invalid references.
+The built-in adapter implements exact-width modular addition, subtraction,
+multiplication and bitwise AND/OR/XOR, plus signed or unsigned division according
+to the representation. Division by zero and signed minimum/-1 are not folded.
+MLVM iN arithmetic uses signed literal interpretation; unsigned bit-pattern
+constant spelling is normalized to that interpretation. `arith.divui` is kept
+opaque by the signed MLVM adapter. Firestone dataflow explicitly records its
+signedness, and its Boolean i1 is excluded from modular-integer matching.
 
-## Generic integer execution domain
+`ModularInteger` checks every exposed binary node and immediate operand for
+homogeneous type, registered semantics and absent semantic flags. MLVM operations
+with extra attributes other than `value` and `origin` do not qualify. New
+arithmetic is constructed at the original type; capture forwarding preserves
+identity. Unsupported domains never become integer proofs.
 
-Supported constructors are `add`, `sub`, `mul`, `bitwise-and`, `bitwise-or`, and
-`bitwise-xor`. Patterns can bind operands and `(integer LITERAL-OR-VARIABLE)`
-constants. A fold must compute the same operator from the same literal bindings;
-a rewrite currently forwards bound operands and must satisfy an implemented
-integer identity. Operations with extra attributes are conservatively untouched.
+`Associative` and `Commutative` are proved for unflagged modular addition and
+multiplication. `Pure` and `Total` are conservative facts. `AllOnes` and `Nonzero`
+are available for representable concrete literals. Host-descriptor predicates
+remain unknown in the generic integer adapter.
 
-Recognized positive predicates concern defined compile-time semantics,
-representability, compatible integer types, zero-addition identity, and
-one-multiplication identity. Recognized forbidden predicates concern observable
-effects and trapping signed overflow. Unknown contracts do not become true by
-default. The precise identifier list is in the kernel reference.
+## Scheduling and convergence
 
-## Proof obligations
+The native driver visits children first, applies the first matching rule in
+resolved order, then revisits replacements to a fixed point. Each kernel action
+has a budget across all rewritten roots/operations. Exhaustion fails without
+publishing partial IR or trace; the diagnostic identifies recent rules.
 
-In general rewrite backends, preconditions need `proven_true`; forbidden
-conditions need `proven_false`. Unknown or invalidated evidence blocks rewriting.
-Matching syntax is not a proof of semantic equivalence. Tests demonstrate the
-implemented adapter's integer behavior, not correctness of every catalog rule
-for every possible IR.
-
-Reference: [exact supported contracts](../docs/KERNELS.md#execution-and-validation-contracts),
-[upstream findings](../tools/blackstone/UPSTREAM-ISSUES.md).
+Integration tests exercise all 16 algebra rules, exhaustive small signed widths,
+unknown facts, flags, distinct identities, exceptional division, idempotence,
+budget rollback and binary-profile round trips. Catalog compilation validates
+declarations; it is not a proof of arbitrary user rewrite equivalence.

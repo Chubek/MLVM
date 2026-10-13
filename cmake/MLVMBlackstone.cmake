@@ -1,5 +1,6 @@
 # MLVM-owned catalog tooling; libstone is a read-only source dependency.
-if(MLVM_BUILD_TESTS OR MLVM_BUILD_TOOLS)
+if((MLVM_BUILD_TESTS OR MLVM_BUILD_TOOLS) AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libstone/blackstone/optilisp/src/optilisp/errors.py")
   find_package(Python3 3.9 COMPONENTS Interpreter QUIET)
   if(Python3_Interpreter_FOUND)
     if(MLVM_BUILD_TESTS)

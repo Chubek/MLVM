@@ -26,17 +26,21 @@ found. Native execution checks are limited to supported Linux/x86-64 hosts.
 | Broader binary models | `tests/binutils.cpp` |
 | Tool status and end-to-end behavior | `tests/integration/toolchain.py` |
 | Library-backed CLI | `tests/integration/binutils.py` |
-| Kernel CLI | `tests/integration/kernels.py` |
-| Optilisp and NodeIR | `optilisp/tests/` |
+| Scheduler, Firestone, rollback and dialects | `tests/sched.cpp` |
+| Native Blackstone rules, integer semantics and catalog | `tests/blackstone_sched.cpp` |
+| Emitted native/LLVM/Wasm execution and CLI | `tests/integration/sched.py` |
 
-Catalog tooling can also run from the source directory:
+Run the native kernel and scheduler checks with:
 
 ```sh
-python3 -B -m tools.blackstone validate
+ctest --test-dir build -R 'mlvm-(sched|blackstone-sched)' --output-on-failure
 ```
 
-That validates MLVM's supplemental catalog; it does not prove arbitrary catalog
-kernels executable by every backend.
+The native test resolves every supplied `.bst` catalog entry and exercises
+all 16 algebra rules plus exhaustive small-width signed/unsigned arithmetic.
+The CLI test independently executes generated code using cc/Clang/Node when
+available. Legacy Optilisp catalog tooling is registered only if its old sources
+are present.
 
 ## Troubleshooting guide
 
@@ -47,7 +51,7 @@ kernels executable by every backend.
 | Stale use list | Direct operand edits without `rebuild_uses()` |
 | Kernel no-op | Pattern, stage, facts, and candidate conditions |
 | Kernel execution error | Supported verb/contracts and selected registry |
-| Installed catalog not found | Actual `--blackstone-dir` after prefix relocation |
+| Installed catalog not found | Kernel paths relative to the `.sched` file |
 | Undefined link symbol | Symbol definition, archive order, and strong/weak binding |
 | Object rejected | Relocatable format subset and enabled binary-tool mode |
 
@@ -56,4 +60,4 @@ features, and diagnostics. Canonical IR and deterministic objects make useful
 reproduction artifacts. Add negative cases for malformed input and verify
 rollback after partial edits, not just successful transformation output.
 
-Reference: [test registration](../CMakeLists.txt), [Optilisp tests](../optilisp/tests).
+Reference: [test registration](../CMakeLists.txt), [scheduler reference](41-schedulers.md).

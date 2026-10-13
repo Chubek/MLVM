@@ -1,8 +1,8 @@
 # MLVM Manual
 
-A 40-chapter user and developer manual for MLVM **0.1.0**. It covers the
+A 41-chapter user and developer manual for MLVM **0.1.0**. It covers the
 implemented compiler infrastructure, its command-line tools, and extension points
-for dialects, passes, and user-authored Optilisp optimization kernels.
+for dialects, passes, native Blackstone kernels and Lua/Firestone orchestration.
 
 ## How to use this manual
 
@@ -49,12 +49,12 @@ support in another. Header declarations and the focused documents in
 18. [Analysis caching and preservation](18-analyses.md)
 19. [Builtin optimization passes](19-builtin-passes.md)
 20. [Writing and observing passes](20-custom-passes.md)
-21. [Blackstone and Optilisp](21-blackstone.md)
-22. [Applying kernels from textual IR and the CLI](22-kernel-cli.md)
+21. [Blackstone kernels](21-blackstone.md)
+22. [Scheduling kernels from the CLI](22-kernel-cli.md)
 23. [Applying kernels through C++](23-kernel-api.md)
-24. [Authoring an Optilisp kernel](24-authoring-kernels.md)
+24. [Authoring a Blackstone kernel](24-authoring-kernels.md)
 25. [Kernel contracts, proofs, and validation](25-kernel-contracts.md)
-26. [Host optimizers and tree rewriting](26-host-optimizers.md)
+26. [Host optimizers and Firestone orchestration](26-host-optimizers.md)
 27. [NodeIR graphs and translation](27-nodeir.md)
 
 ### Part IV — Targets and binary tools
@@ -75,12 +75,13 @@ support in another. Header declarations and the focused documents in
 38. [An end-to-end executable](38-end-to-end.md)
 39. [Testing and troubleshooting](39-testing.md)
 40. [Extending MLVM and planning future work](40-extending.md)
+41. [Lua schedulers and DAG orchestration](41-schedulers.md)
 
 ## Suggested reading paths
 
 - **IR user:** 3, 5–6, 10–12, 17, 19, 22.
-- **Embedding developer:** 4, 7–9, 12–18, 20, 23.
-- **Kernel author:** 11, 21–27, 39.
+- **Embedding developer:** 4, 7–9, 12–18, 20, 23, 26, 41.
+- **Kernel author:** 11, 21–27, 39, 41.
 - **Toolchain user:** 3, 6, 28–38.
 - **Contributor:** 2, 12, 20, 25–27, 39–40.
 

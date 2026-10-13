@@ -1,49 +1,49 @@
-# 26. Host optimizers and tree rewriting
+# 26. Host optimizers and Firestone orchestration
 
 [Contents](README.md) · [Next: NodeIR](27-nodeir.md)
 
-Use a host adapter when a kernel targets custom dialects or transformations
-beyond the generic integer executor. `ModuleOptimizer` is the MLVM module-facing
-extension interface:
+A scheduler registry maps action names to factories. Factories validate string
+options and return native actions; `.sched` nodes call those actions with
+immutable predecessor artifacts. An artifact is a kind string plus an owning
+`std::any` value, so hosts can orchestrate additional Firestone representations
+without changing the Lua parser.
 
-| Method | Responsibility |
-| --- | --- |
-| `supports` | Reject unsupported kernel transformations explicitly |
-| `stage` | Identify the module's adapter stage |
-| `fact` | Supply namespaced capability, analysis, and other evidence |
-| `apply` | Match candidates, prove legality, and execute changes |
+```cpp
+registry.add("host.ssa-pass", [](const mlvm::sched::Options& options) {
+    if (!options.empty()) throw std::invalid_argument("this pass takes no options");
+    return [](std::span<const mlvm::sched::Artifact* const> inputs,
+              mlvm::sched::RunContext& run) -> std::optional<mlvm::sched::Artifact> {
+        if (inputs.size() != 1) throw std::invalid_argument("expected one input");
+        auto program = inputs[0]->get<firestone::ir::SimpleSSAGraph>();
+        // Run a host transformation or Firestone PassManager on this owned copy.
+        mlvm::sched::Artifact output{"firestone.ssa", std::move(program)};
+        if (!mlvm::sched::verify_artifact(output, run.diagnostics)) return {};
+        return output;
+    };
+});
+```
 
-Load descriptors successfully before passing them to `kernel_pass(kernel,
-optimizer)`. Register every consumed analysis with the pass manager. Facts
-queried globally must justify the complete application; candidate-specific
-conditions belong in `apply`. The manager supplies candidate-copy rollback,
-post-pass verification, and analysis invalidation.
+Lua invokes this with `p:node{name="host", action="host.ssa-pass",
+inputs={"ssa"}}`. The scheduler verifies known artifact kinds again at
+publication. Custom kinds need custom verification before the action returns.
 
-## Expression-tree backend
+## Native Blackstone adapters
 
-`RewriteSystem` is a separate backend for Optilisp terms. Constructor heads are
-literal symbols; operand symbols bind terms. Repeated bindings compare structural
-equality, unlike the definition-identity rule used by graph and generic SSA
-adapters. Result variables must be bound by the input pattern.
+Use `Kernel::profile()` with `bs_optimize` and a `BSAdapter` to implement custom
+typed trees or descriptors. The adapter supplies inspection, identity,
+equivalence, predicate queries, immutable construction, rebuilding, folding and
+trace callbacks. Values and strings must remain alive for the whole native run.
 
-The tree engine supports rewrite forms, not arbitrary computed fold results or
-global optimization verbs. `RewriteContext` supplies stage, namespaced facts,
-and a candidate-specific prover receiving the kernel, input, proposed result,
-and bindings.
+Capture identity and structural equivalence are different contracts. Guard
+queries inspect metadata and analysis facts; they do not evaluate source code.
+Never let a C++ exception escape a callback through the C runtime. Record the
+failure and return the callback's documented failure value.
 
-## Termination and transactions
+SSA hosts also implement installation, use-def updates and effect-aware dead-code
+elimination. The supplied MLVM adapter preserves original definitions and updates
+uses transactionally. Structured control/memory/loop kernels need proofs of the
+complete transformation, not just matching syntax.
 
-Tree optimization traverses preorder in stable kernel-ID order until a fixed
-point. Successful rewrites invalidate unpreserved analyses and record history.
-Cycles, exhausted budgets, callback exceptions, or resource violations roll back
-both terms and facts.
-
-Callbacks should be side-effect-free. A module or term transaction cannot undo
-changes to an external database, a file, or application state captured by a
-callback. Shared mutable optimizer instances require caller synchronization.
-
-Use the smallest backend matching your semantics: terms for structural trees,
-NodeIR for explicit graph identity, and `ModuleOptimizer` for dialect-specific
-generic-module behavior.
-
-Reference: [host interface](../include/mlvm/optilisp/pass.hpp), [rewrite guide](../optilisp/README.md).
+The scheduler commits the result map only after a complete successful DAG run.
+Use immutable inputs and owning outputs; shared mutable application state and
+external side effects are outside that transaction.

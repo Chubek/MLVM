@@ -37,21 +37,23 @@ cmake --build build
 | `MLVM::NodeIR` | Header-only stage-specific graphs |
 | `MLVM::Binutils` | Optional broader binary-object APIs |
 | `MLVM::Cephyr` | Optional frontend |
-| `MLVM::OptilispPass` | Optional generic-module kernel execution |
+| `MLVM::Scheduler` | Lua DAG orchestration and native kernel/IR adapters |
+| `MLVM::Blackstone` | Supplied native C kernel runtime |
+| `MLVM::Firestone` | Supplied header-only IR representations |
 
-Optional targets exist only when their component was enabled. The standalone
-`optilisp/` package instead uses `find_package(MLVMOptilisp CONFIG REQUIRED)`
-and exports the reader/loader libraries for independent consumers.
+Optional targets exist only when their component was enabled. Scheduler, Lua,
+Blackstone and Firestone integration are included in the standard build.
 
 Cephyr's private cparser-iso11 archive is installed/exported with its target.
-Optilisp and binary-tool dependency archives are exported
+Scheduler and binary-tool dependency archives are exported
 with their respective package configurations.
 
 ## Kernel data after relocation
 
-Optilisp-enabled installations include `share/mlvm/blackstone`, containing the
-catalog and registry. When installing with a prefix different from the configured
-one, point the CLI at the actual location with `--blackstone-dir=DIR`. C++ callers
-supply registry and kernel paths explicitly.
+Installations include `share/mlvm/blackstone/kernels` and runnable orchestrators
+in `share/mlvm/examples/sched`. Installed orchestrator paths are adjusted to the
+installed catalog and remain relative to the script, supporting prefix relocation.
+C++ callers supply kernel and script paths explicitly. Link `MLVM::Scheduler`
+to use `<mlvm/sched.hpp>`; its exported target brings the runtime dependencies.
 
 Reference: [public API contract](../docs/API.md).

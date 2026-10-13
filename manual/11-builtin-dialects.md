@@ -1,5 +1,9 @@
 # 11. Builtin functions and integer operations
 
+The complete registered high/mid/low/machine/interp/llvmir/wasm/gpu inventory and
+foundation extensions are documented in [dialects](../dialects/README.md).
+Scheduler conversion routes are described in [chapter 41](41-schedulers.md).
+
 [Contents](README.md) · [Next: Verification](12-verification.md)
 
 Register the builtin dialects before parsing their operations:

@@ -13,8 +13,8 @@ The 0.1.0 baseline includes contexts and structured diagnostics, a value-owned
 generic SSA representation, versioned text, operation registration, verification,
 transactional module passes, and full dialect conversion. A narrow x86-64 toolchain
 assembles, archives, links, and inspects ELF relocatable objects. Optional
-library-backed binary tools broaden object handling; optional Optilisp support
-executes a checked integer subset of Blackstone kernels.
+library-backed binary tools broaden object handling. Lua schedulers orchestrate
+native Blackstone kernels and Firestone IRs as verified acyclic pipelines.
 
 Cephyr uses cparser-iso11 for a documented C11 freestanding integer subset:
 functions, parameters, locals, calls, structured control flow, static assertions
@@ -25,19 +25,19 @@ and generic selection. Full ISO C11 conformance remains a development goal.
 | Goal | Starting artifact | Primary interface |
 | --- | --- | --- |
 | Transform SSA | `.mlvm` text or `mlvm::Module` | `mlvm`, `MLVM::IR` |
-| Author optimizations | `.olisp` kernel source | Optilisp loader and pass adapter |
+| Author optimizations | `.bst` kernels and `.sched` orchestrators | `mlvm-sched`, `MLVM::Scheduler` |
 | Build native artifacts | supported assembly or Cephyr C | `mlvm-as`, `cephyr`, `mlvm-ld` |
 
-The architecture anticipates richer high-, mid-, low-, and machine-level
-representations. Those goals do not imply that generic IR currently supports
-memory operations, CFG successor edges, general function calls, or lowering every
-custom dialect to machine code.
+Registered high-, mid-, low-, machine-, interpreter-, GPU-, LLVM- and
+WebAssembly-oriented dialects have explicit verification contracts. Standard
+integer expression routes connect them to the target emitters. Structured control,
+device launches and runtime calls require their own host lowerings.
 
 ## Reading support claims
 
 An accepted object-machine identifier does not promise instruction selection for
 that machine. A parsed C construct does not promise semantic lowering. Likewise,
-a validated Optilisp declaration does not promise that a selected backend can
+a validated Blackstone declaration does not promise that a selected backend can
 execute its transformation. Treat each boundary as an explicit contract.
 
 Reference: [implementation status](../docs/ROADMAP.md).

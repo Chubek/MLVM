@@ -1,0 +1,16 @@
+local p = require("lsched").pipeline()
+local input = p:ir("input", {path = "input.mlvm"})
+local optimized = p:kernel("optimized", input, {
+  path = "../../libstone/blackstone/kernels/expressions/AlgebraicSimplification.bst",
+})
+local clean = p:pass("clean", optimized, {name = "dce"})
+for _, target in ipairs {
+  {"native", "x86_64-unknown-linux-gnu"},
+  {"wasm", "wasm32-unknown-unknown"},
+  {"llvm", "llvmir-unknown-unknown"},
+} do
+  p:target(target[1], clean, {triple = target[2]})
+end
+-- The final artifact is the default CLI result; other nodes use --result=NAME.
+p:text("optimized_ir", clean)
+return p

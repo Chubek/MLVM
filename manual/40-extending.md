@@ -13,9 +13,10 @@ documentation, and unsupported-case diagnostics agree.
 | New operation family | Dialect registration and custom verification |
 | New lowering route | `ConversionGraph` with explicit legal dialects |
 | Module optimization | `Pass` and analysis contracts |
-| Reusable declarative optimization | Authored Optilisp kernel plus a supported backend |
-| Custom kernel semantics | `ModuleOptimizer` or graph materialization/proof callbacks |
-| Foreign graph integration | NodeIR import/export callbacks |
+| Reusable declarative optimization | Authored Blackstone `.bst` kernel and `.sched` pipeline |
+| Custom kernel semantics | Native `BSAdapter` or MLVM `Facts` callbacks |
+| Foreign graph integration | Scheduler artifacts and Firestone/NodeIR adapters |
+| Orchestration | `mlvm::sched::Registry` action factories and DAG nodes |
 | New object behavior | MLVM-owned binary adapter and owning public types |
 | New machine target | Encodings, relocations, ABI decisions, and vertical-slice tests |
 

@@ -4,18 +4,23 @@
 #include <set>
 
 namespace mlvm {
-enum class Endianness { little, big };
+enum class Endianness { little, big, unspecified };
 struct Target {
     std::string triple;
     std::uint16_t machine;
     unsigned pointer_bits;
     Endianness endianness;
     std::string object_format;
+    unsigned schema_version = 1;
+    std::string abi;
+    std::set<std::string> features, dialects;
+    bool assembler = false, emitter = false;
 };
 class TargetRegistry {
 public:
     bool add(Target target);
     [[nodiscard]] const Target* find(std::string_view triple) const;
+    [[nodiscard]] std::vector<Target> list() const;
     static TargetRegistry builtins();
 private:
     std::map<std::string, Target, std::less<>> targets_;

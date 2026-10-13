@@ -1,0 +1,11 @@
+local p = require("lsched").pipeline()
+-- Nodes may refer forward to names declared later. `after` adds ordering only.
+p:node {
+  name = "finish", action = "verify", inputs = {"optimized"}, after = {"check"},
+}
+local input = p:ir("input", {path = "input.mlvm"})
+p:verify("check", input)
+p:kernel("optimized", input, {
+  path = "../../libstone/blackstone/kernels/expressions/AlgebraicSimplification.bst",
+})
+return p

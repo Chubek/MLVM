@@ -1,45 +1,48 @@
-# 21. Blackstone and Optilisp
+# 21. Blackstone kernels
 
 [Contents](README.md) · [Next: Kernel CLI](22-kernel-cli.md)
 
-Blackstone supplies optimization kernels under `libstone/blackstone/kernels`.
-Kernels are written in Optilisp and describe identity, stage, requirements,
-conditions, transformations, correctness obligations, and documentation.
-MLVM supports both applying selected catalog entries and authoring new kernels.
+MLVM integrates the current `libstone/blackstone` **`.bst` language and native C
+rewrite runtime** through `MLVM::Scheduler`. Lua `.sched` files describe when
+kernels run and how their output flows into subsequent MLVM/Firestone stages.
 
-## Enabling the integration
+The build uses Blackstone's own DParser grammar to generate a native parser.
+MLVM converts that concrete syntax tree into Blackstone kernel IR, then calls
+`bs_profile_compile` for declaration resolution, inheritance and validation.
+Execution calls `bs_optimize`; it does not translate kernels into Lua or Python.
 
 ```sh
-cmake -S . -B build -DMLVM_ENABLE_OPTILISP=ON
+cmake -S . -B build
 cmake --build build --parallel
+build/mlvm-sched examples/sched/algebra.sched --trace
 ```
 
-The sfsexp reader dependency must be available. The root build exposes three
-layers: `MLVM::Optilisp` reads source forms, `MLVM::OptilispLoader` validates and
-installs descriptors, and `MLVM::OptilispPass` connects kernels to generic MLVM
-module passes. `MLVM::NodeIR` provides a separate header-only graph model.
+The actual `kernels/expressions/AlgebraicSimplification.bst` fixture contains
+16 local rules and inherits built-in `ConstantFolding`. The example transforms
+`(x + 3) + 4` into `x + 7`, then interprets the pipeline with `x = 35` to print 42.
 
-## Declaration versus execution
+## Catalog and profiles
 
-Loading a declaration establishes that its schema and references satisfy a
-chosen validation profile. Execution additionally requires a backend that
-supports the transformation and can establish its semantic conditions.
+The source catalog is `libstone/blackstone/kernels`; installed kernels are in
+`share/mlvm/blackstone/kernels`. Kernel identity comes from the `Kernel` declaration.
+The loader registers the supplied expression and structured descriptor contracts.
+The native compiler checks the complete supplied catalog in the integration tests.
 
-The generic SSA backend treats verified builtin integer operations as its HIR
-domain. It supports selected modular folds and operand-forwarding identities.
-Other stages, history-dependent contracts, global transformations, and unhandled
-semantics need explicit host implementations.
+The built-in MLVM and Firestone adapters execute the integer expression domain.
+Statement, memory, control-flow, loop and polyhedral descriptor transformations
+require host adapters supplying their semantics and proven capabilities. A known
+capability name does not make its predicate true.
 
-## Catalog layouts
+Compiled profiles can be saved as `.bsp` and reloaded through Blackstone's
+versioned, validated binary format. A profile owns its kernel instructions;
+`Kernel` owns both the profile and its registry.
 
-In the source tree, the registry is `libstone/blackstone/optilisp/stdlib` and the
-catalog is `libstone/blackstone/kernels`. Installed data uses
-`share/mlvm/blackstone/stdlib` and `share/mlvm/blackstone/kernels`.
-Identities come from `:id` declarations, not filenames.
+## Migration from Optilisp
 
-MLVM also maintains supplemental catalog tooling under `tools/blackstone`.
-Validation of those supplemental records is distinct from execution support for
-the original catalog. Known upstream reference and stage issues are recorded
-separately; the integration does not silently invent missing evidence.
+The former `.olisp` path is a legacy optional component, disabled by default and
+requiring its separately available sources. `.sched` orchestration uses `.bst`
+kernels directly; old textual `kernel`/`apply` directives and old CLI kernel
+flags are not the scheduler API. Use a `kernel` node in an orchestrator.
 
-Reference: [kernel integration](../docs/KERNELS.md), [Optilisp overview](../optilisp/README.md).
+See [schedulers](41-schedulers.md), [native C++ API](23-kernel-api.md), and
+[Blackstone's native API](../libstone/blackstone/docs/native-api.md).

@@ -18,7 +18,8 @@ lowering sequence.
 | `src/codegen`, `src/assembler`, `src/linker` | Baseline native toolchain |
 | `src/binutils` | MLVM-owned Limestone adapters |
 | `tools/` | Executables and Blackstone catalog tooling |
-| `optilisp/` | Reader, loader, rewriting, and integration tests |
+| `src/sched` | Lua DSL, DAG scheduling, native Blackstone and Firestone adapters |
+| `src/target`, `targets/` | Target metadata, integer emitters and target contracts |
 | `cephyr/` | Optional C frontend |
 | `examples/`, `tests/` | Executable usage examples and regressions |
 | `cmake/` | Dependency detection and build adapters |
@@ -31,7 +32,7 @@ evidence of an implemented executable feature.
 
 The generic IR core is independent of any particular language or native target.
 `MLVM::IR` builds on `MLVM::Core`; `MLVM::Object` builds on
-`MLVM::Codegen`. Cephyr and Optilisp integrations add their own layers without
+`MLVM::Codegen`. Cephyr and Scheduler integrations add their own layers without
 requiring executable tools as library dependencies.
 
 `libstone/` is a read-only source dependency. MLVM-owned adapters isolate its

@@ -11,9 +11,15 @@ option set than the dependency-free fallback.
 build/mlvm --version
 build/mlvm-as --help
 build/mlvm-readelf --help
+build/mlvm-sched --help
 ```
 
 ## Inputs and outputs
+
+`mlvm-sched FILE.sched` runs a Lua `lsched` orchestrator. `mlvm FILE.sched`
+and `mlvm --schedule=FILE.sched` are equivalent entry points. Use `--check`
+to validate its DAG, `--dot` to inspect it, `--trace` for rule/stage traces and
+`--result=NODE` to select an output. See [chapter 41](41-schedulers.md).
 
 Native binary-producing commands require the documented output arguments;
 `mlvm-as` and Cephyr `-c`, for example, require `-o FILE`. Text-producing modes

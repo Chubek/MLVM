@@ -1,0 +1,10 @@
+local lsched = require "lsched"
+local p = lsched.pipeline()
+local input = p:ir("input", {path = "input.mlvm"})
+local optimized = p:kernel("simplify", input, {
+  path = "../../libstone/blackstone/kernels/expressions/AlgebraicSimplification.bst",
+  budget = "1000",
+})
+local clean = p:pass("clean", optimized, {name = "dce"})
+p:target("answer", clean, {triple = "interp-unknown-unknown", arguments = "35"})
+return p

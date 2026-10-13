@@ -1,5 +1,6 @@
 #include <mlvm/ir.hpp>
 #include <mlvm/c.hpp>
+#include <mlvm/dialect.hpp>
 #include <charconv>
 #include <limits>
 
@@ -58,6 +59,6 @@ bool register_builtin_dialects(Context& context, DiagnosticEngine& diagnostics) 
     for (auto name : {"arith.addi", "arith.subi", "arith.muli", "arith.divsi", "arith.remsi", "arith.divui", "arith.remui",
                       "arith.and", "arith.or", "arith.xor"})
         add({name, 2, 2, 1, 1, 0, 0, Effect::pure, false, integer});
-    return register_c_dialect(context, diagnostics) && ok;
+    return register_c_dialect(context, diagnostics) && register_standard_dialects(context, diagnostics) && ok;
 }
 } // namespace mlvm

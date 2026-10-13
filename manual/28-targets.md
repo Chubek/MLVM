@@ -7,6 +7,13 @@ little-endian ELF64. `Target` records the triple, machine identity, pointer widt
 endianness, and object format. `TargetRegistry` supports explicit registration
 and lookup.
 
+Version-1 target descriptions also record ABI, feature sets, target-facing
+dialects and explicit assembler/emitter capabilities. `TargetRegistry::list()`
+enumerates them; `verify_target` checks their schema. The scheduler exposes
+integer expression emitters for ELF64 x86, WebAssembly and LLVM text, plus an
+interpreter. See [the target table](../targets/README.md) and
+[scheduler target actions](41-schedulers.md#dialect-and-target-routes).
+
 ## Implemented instruction subset
 
 The encoder/decoder in `mlvm/codegen.hpp` handles:
@@ -34,8 +41,9 @@ register allocation, instruction selection, or calling-convention lowering.
 Likewise, registering a `Target` value is not a backend implementation.
 
 When adding a target, define its instruction encoding and relocation arithmetic
-from an authoritative contract, then test a complete artifact path. The current
-Cephyr backend emits constant returns; general scheduling, register allocation,
-and frame lowering remain planned work.
+from an authoritative contract, then test a complete artifact path. The expression
+x86 emitter uses explicit i32 stack slots and supports up to six parameters;
+Cephyr has its own C-dialect backend. General instruction selection and register
+allocation are separate extension points.
 
 Reference: [machine API](../include/mlvm/codegen.hpp), [target model](../include/mlvm/object.hpp).

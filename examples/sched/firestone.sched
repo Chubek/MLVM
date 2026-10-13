@@ -1,0 +1,11 @@
+local p = require("lsched").pipeline()
+local input = p:ir("input", {path = "input.mlvm"})
+local dag = p:convert("dataflow", input, {to = "firestone.dataflow"})
+local simplified = p:kernel("simplified", dag, {
+  path = "../../libstone/blackstone/kernels/expressions/AlgebraicSimplification.bst",
+})
+-- Both branches consume independently owned copies of the same DAG artifact.
+local linear = p:convert("linear", simplified, {to = "firestone.3ac"})
+local ssa = p:convert("ssa", simplified, {to = "firestone.ssa"})
+p:collect("representations", {linear, ssa})
+return p
