@@ -47,17 +47,25 @@ bool register_c_dialect(Context& context, DiagnosticEngine& diagnostics) {
                 return fail("C results must have integer or pointer type");
         }
         if (op.name == "c.load" || op.name == "c.store") {
-            if (!attribute_number(op, "slot") || attribute_number(op, "slot") >= 65536)
+            const auto slot = attribute_number(op, "slot");
+            if (!slot || *slot >= 65536)
                 return fail("local access requires a valid slot");
-            if (op.results.size() == 1 && !type_attribute(op, "type"))
-                return fail("c.load requires the loaded type");
+            if (op.name == "c.load") {
+                const auto type = op.attributes.find("type");
+                if (op.results.size() != 1 || type == op.attributes.end() || !type_attribute(op, "type"))
+                    return fail("c.load requires the loaded type");
+                const auto* result = module.value(op.results[0]);
+                if (!result || module.context->spelling(result->type) != type->second)
+                    return fail("c.load type must match its result");
+            }
         }
         if (op.name == "c.address_of") {
             const auto kind = attribute(op, "kind");
             if (kind.empty()) return fail("c.address_of requires a kind");
             if (kind == "local") {
                 const auto bytes = attribute_number(op, "bytes");
-                if (!attribute_number(op, "slot") || !bytes || *bytes == 0 || *bytes > (1u << 24))
+                const auto slot = attribute_number(op, "slot");
+                if (!slot || !bytes || *bytes == 0 || *bytes > (1u << 24))
                     return fail("local addresses require a slot and a valid byte size");
             } else if (kind == "global") {
                 if (attribute(op, "sym").empty()) return fail("global addresses require a symbol");
@@ -66,13 +74,21 @@ bool register_c_dialect(Context& context, DiagnosticEngine& diagnostics) {
         if (op.name == "c.gep") {
             const auto scale = attribute_number(op, "scale");
             if (!scale || *scale == 0 || *scale > 4096) return fail("c.gep requires a valid element scale");
-            if (module.context->spelling(module.value(op.operands[0])->type) != "ptr" ||
-                module.context->spelling(module.value(op.operands[1])->type) != "i64")
+            if (op.operands.size() != 2) return fail("c.gep requires a pointer base and a 64-bit index");
+            const auto* base = module.value(op.operands[0]);
+            const auto* index = module.value(op.operands[1]);
+            if (!base || !index || module.context->spelling(base->type) != "ptr" ||
+                module.context->spelling(index->type) != "i64")
                 return fail("c.gep requires a pointer base and a 64-bit index");
         }
         if (op.name == "c.cast") {
             if (op.results.size() != 1 || !type_attribute(op, "from") || !type_attribute(op, "to"))
                 return fail("c.cast requires from/to types");
+            const auto* operand = op.operands.empty() ? nullptr : module.value(op.operands[0]);
+            const auto* result = module.value(op.results[0]);
+            if (!operand || !result || module.context->spelling(operand->type) != attribute(op, "from") ||
+                module.context->spelling(result->type) != attribute(op, "to"))
+                return fail("c.cast from/to types must match its operand and result");
             const auto sign = attribute(op, "signed");
             if (sign != "true" && sign != "false") return fail("c.cast requires explicit signedness");
         }
@@ -89,6 +105,50 @@ bool register_c_dialect(Context& context, DiagnosticEngine& diagnostics) {
         }
         if (op.name == "c.call" || op.name == "c.declare") {
             if (attribute(op, "sym").empty()) return fail("call/declaration requires a symbol");
+        }
+        if (op.name == "c.ptrload") {
+            const auto type = op.attributes.find("type");
+            const auto* result = op.results.empty() ? nullptr : module.value(op.results[0]);
+            if (type == op.attributes.end() || !type_attribute(op, "type") || !result ||
+                module.context->spelling(result->type) != type->second)
+                return fail("c.ptrload type must match its result");
+        }
+        if (op.name == "c.shl" || op.name == "c.shr") {
+            const auto* left = op.operands.empty() ? nullptr : module.value(op.operands[0]);
+            const auto* right = op.operands.size() < 2 ? nullptr : module.value(op.operands[1]);
+            const auto* result = op.results.empty() ? nullptr : module.value(op.results[0]);
+            if (!left || !right || !result || left->type != right->type || left->type != result->type ||
+                module.context->spelling(left->type) == "ptr")
+                return fail("C shifts require matching integer operand and result types");
+        }
+        if (op.name == "c.lt" || op.name == "c.le" || op.name == "c.gt" || op.name == "c.ge" ||
+            op.name == "c.eq" || op.name == "c.ne") {
+            const auto* left = op.operands.empty() ? nullptr : module.value(op.operands[0]);
+            const auto* right = op.operands.size() < 2 ? nullptr : module.value(op.operands[1]);
+            const auto* result = op.results.empty() ? nullptr : module.value(op.results[0]);
+            if (!left || !right || !result || left->type != right->type ||
+                module.context->spelling(result->type) != "i32")
+                return fail("C comparisons require matching operands and an i32 result");
+        }
+        if (op.name == "c.address_of" && attribute(op, "kind") == "local") {
+            const auto* result = op.results.empty() ? nullptr : module.value(op.results[0]);
+            if (!result || module.context->spelling(result->type) != "ptr")
+                return fail("local addresses must produce ptr");
+        }
+        if (op.name == "c.address_of" && attribute(op, "kind") == "global") {
+            const auto* result = op.results.empty() ? nullptr : module.value(op.results[0]);
+            if (!result || module.context->spelling(result->type) != "ptr")
+                return fail("global addresses must produce ptr");
+        }
+        if (op.name == "c.gep") {
+            const auto* result = op.results.empty() ? nullptr : module.value(op.results[0]);
+            if (!result || module.context->spelling(result->type) != "ptr")
+                return fail("c.gep must produce ptr");
+        }
+        if (op.name == "c.if" || op.name == "c.select") {
+            const auto* condition = op.operands.empty() ? nullptr : module.value(op.operands[0]);
+            if (!condition || module.context->spelling(condition->type) != "i32")
+                return fail("C control conditions must have type i32");
         }
         for (std::size_t i = 0; i < op.regions.size(); ++i) {
             const auto& region = op.regions[i];
@@ -138,13 +198,16 @@ bool verify_c_module(const Module& module, DiagnosticEngine& diagnostics) {
         return attribute_number(op, key);
     };
     // Global slots are module-scoped: a local address may only name a frame
-    // declared by its function, and a global address must resolve.
+    // declared by its function. Global addresses may refer to definitions
+    // from other translation units, which only the linker resolves, so the
+    // module verifier does not require an in-module definition.
     std::map<std::string, unsigned> globals;
     for (const auto& block : module.body.blocks) for (const auto& op : block.operations) {
         if (op.name != "c.global") continue;
         auto size = number(op, "size");
-        if (!size) continue;
-        if (!globals.emplace(op.attributes.at("sym"), *size).second)
+        const auto symbol = op.attributes.find("sym");
+        if (!size || symbol == op.attributes.end() || symbol->second.empty()) continue;
+        if (!globals.emplace(symbol->second, *size).second)
             fail(op, "duplicate global symbol '" + op.attributes.at("sym") + "'");
     }
     struct Signature { std::size_t arguments; std::string result; };
@@ -155,9 +218,9 @@ bool verify_c_module(const Module& module, DiagnosticEngine& diagnostics) {
         auto arguments = op.name == "c.declare" ? number(op, "parameters") : std::optional<unsigned>{};
         if (op.name == "builtin.func" && op.regions.size() == 1 && op.regions[0].blocks.size() == 1)
             arguments = static_cast<unsigned>(op.regions[0].blocks[0].arguments.size());
-        if (!arguments) { fail(op, "missing function parameter count"); continue; }
+        if (!arguments.has_value()) { fail(op, "missing function parameter count"); continue; }
         const auto result = op.attributes.contains("result") ? op.attributes.at("result") : "void";
-        if (op.name == "c.declare" && (*arguments > 6 || !integer_or_pointer(result) && result != "void"))
+        if (op.name == "c.declare" && (*arguments > 6 || (!integer_or_pointer(result) && result != "void")))
             fail(op, "C declaration requires up to six parameters and an integer, pointer, or void result");
         Signature signature{*arguments, result};
         auto [it, added] = signatures.emplace(op.attributes.at("sym"), signature);
@@ -175,14 +238,14 @@ bool verify_c_module(const Module& module, DiagnosticEngine& diagnostics) {
             if (op.name == "c.load" || op.name == "c.store") {
                 auto slot = number(op, "slot");
                 auto count = function ? number(*function, "locals") : std::nullopt;
-                if (!slot || !count || *count > 65536 || *slot >= *count) fail(op, "local access is outside its function frame");
+                if (!slot.has_value() || !count.has_value() || *count > 65536 || *slot >= *count) fail(op, "local access is outside its function frame");
             }
             if (op.name == "c.address_of" && function) {
                 auto kind = op.attributes.find("kind");
                 if (kind != op.attributes.end() && kind->second == "local") {
                     auto slot = number(op, "slot");
                     auto count = number(*function, "locals");
-                    if (!slot || !count || *slot >= *count) fail(op, "frame address is outside its function frame");
+                    if (!slot.has_value() || !count.has_value() || *slot >= *count) fail(op, "frame address is outside its function frame");
                 }
             }
             if (op.name == "c.ptrstore" && op.operands.size() == 2) {
@@ -206,7 +269,10 @@ bool verify_c_module(const Module& module, DiagnosticEngine& diagnostics) {
                 auto signature = signatures.find(op.attributes.at("sym"));
                 if (signature == signatures.end()) fail(op, "call requires a function declaration or definition");
                 else if (signature->second.arguments != op.operands.size() ||
-                         op.results.size() != (signature->second.result == "void" ? 0U : 1U)) fail(op, "C call signature mismatch");
+                         op.results.size() != (signature->second.result == "void" ? 0U : 1U) ||
+                         (!op.results.empty() && (!module.value(op.results[0]) ||
+                             module.context->spelling(module.value(op.results[0])->type) != signature->second.result)))
+                    fail(op, "C call signature mismatch");
             }
             if (op.name == "c.loop" && (!op.attributes.contains("kind") ||
                 (op.attributes.at("kind") != "while" && op.attributes.at("kind") != "do"))) fail(op, "invalid C loop kind");

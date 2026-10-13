@@ -15,12 +15,21 @@ build/cephyr -std=c11 --emit-ir examples/answer.c -o build/answer.from-c.mlvm
 build/cephyr -S examples/answer.c -o build/answer.from-c.s
 build/cephyr -c examples/answer.c -o build/answer.o
 build/cephyr main.c helper.c -o build/program
+build/cephyr --target=llvmir-unknown-unknown examples/answer.c -o build/answer.ll
+build/cephyr --target=interp-unknown-unknown examples/answer.c
 ```
 
 Lowering produces registered `builtin`, `arith`, `func`, and `c` operations.
 Local variables use function-owned slots; expression values use SSA. Structured
 regions preserve short-circuit evaluation and loop transfers. MLVM verifies types,
 dominance, call signatures, slots and yields before code generation.
+
+Translation units that lower to pure integer expressions reach the shared
+dialect backends through `--target`: LLVM text, WebAssembly binaries, or
+evaluated results. Parameters, locals, globals, calls, and control flow lower
+to C operations with no expression lowering, so those modules fail `--target`
+emission with an explicit diagnostic naming the blocking operation and must use
+the System V backend below.
 
 The System V backend assigns frame slots to SSA values and locals, maintains
 16-byte call alignment, passes arguments in registers, and returns integers in
@@ -35,7 +44,9 @@ passes. With Optilisp enabled, `--kernel-file`, `--apply-kernel`, and
 API consumers can apply the same kernel APIs to the module returned by `lower`.
 
 Explicit compilation modes accept one source; conflicting modes are invalid usage.
-`-E`, `-S`, and `--emit-ir` default to stdout; `-c` requires `-o`. Default linking
+`-E`, `-S`, and `--emit-ir` default to stdout; `-c` requires `-o`. `--target`
+emission likewise accepts one source and conflicts with every explicit mode:
+LLVM/interp text defaults to stdout while WebAssembly requires `-o`. Default linking
 accepts multiple C sources, objects and archives, adds the selected sysroot's
 `crt0.o`/`libc.a`, and emits `a.out` or the requested `-o` path. `-nostdlib`,
 `-nostartfiles`, and `-nodefaultlibs` control automatic runtime inputs.

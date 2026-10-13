@@ -76,6 +76,17 @@ int main() { return test_main([] {
     auto object = mlvm::emit_x86_object(module, d); CHECK(object); CHECK(object->symbols[0].name == "pipeline");
     auto bytes = mlvm::write_elf(*object, d); CHECK(bytes); CHECK(mlvm::read_elf(*bytes, d));
     CHECK(mlvm::TargetRegistry::builtins().list().size() == 4);
+    CHECK(context.operation("mem.load")->effect == mlvm::Effect::read);
+    CHECK(context.operation("mem.store")->effect == mlvm::Effect::write);
+    CHECK(context.operation("gpu.barrier")->effect == mlvm::Effect::unknown);
+    CHECK(context.operation("high.yield")->terminator);
+    mlvm::SourceManager sources;
+    for (const auto* good : {
+        "mlvm 1 { block(%p:\"ptr\", %v:\"i32\", %c:\"i1\") { %i:\"index\" = \"index.constant\"() [\"value\"=\"4\"]; %w:\"i64\" = \"index.cast\"(%i) []; %j:\"index\" = \"index.cast\"(%w) []; %l:\"i32\" = \"mem.load\"(%p) [\"alignment\"=\"4\"]; \"mem.store\"(%p, %v) [\"alignment\"=\"4\"]; \"cf.assert\"(%c) []; \"cf.unreachable\"() []; } }",
+        "mlvm 1 { block(%c:\"i1\", %x:\"i32\", %y:\"i32\") { %r:\"i32\" = \"high.if\"(%c) [] region { block() { \"high.yield\"(%x) []; } } region { block() { \"high.yield\"(%y) []; } }; } }",
+        "mlvm 1 { block(%c:\"i1\", %x:\"i32\", %y:\"i32\", %p:\"ptr\", %i:\"index\") { %m:\"i32\" = \"mid.select\"(%c, %x, %y) []; %lo:\"i32\" = \"low.add\"(%x, %y) []; %wide:\"i64\" = \"low.cast\"(%x) [\"kind\"=\"sext\"]; %ll:\"i32\" = \"llvmir.load\"(%p) [\"alignment\"=\"4\"]; \"llvmir.store\"(%p, %x) [\"alignment\"=\"4\"]; %copy:\"i32\" = \"machine.copy\"(%x) []; %call:\"i32\" = \"interp.call\"(%x) [\"callee\"=\"host\"]; \"interp.guard\"(%c) [\"deopt\"=\"slow\"]; %tid:\"i32\" = \"gpu.thread_id\"() [\"axis\"=\"x\"]; \"gpu.barrier\"() []; \"gpu.launch\"(%i, %i, %i, %i, %i, %i, %x) [\"callee\"=\"kernel\"]; %wc:\"i32\" = \"wasm.constant\"() [\"value\"=\"1\"]; %ws:\"i32\" = \"wasm.select\"(%wc, %x, %y) []; \"wasm.drop\"(%ws) []; } }"}) {
+        CHECK(mlvm::parse_ir(context, sources, sources.add("valid", good), d)); CHECK(!d.has_error()); d.clear();
+    }
     // A legal-looking conversion that loses a width/semantic contract must roll back.
     auto narrow = input->get<mlvm::Module>();
     auto narrow_type = context.intern("i8");
@@ -83,7 +94,6 @@ int main() { return test_main([] {
     narrow.body.blocks[0].operations[0].attributes["result"] = "i8";
     auto narrow_text = mlvm::print_ir(narrow);
     CHECK(!mlvm::lower_dialect(narrow, "wasm", d)); CHECK(mlvm::print_ir(narrow) == narrow_text); d.clear();
-    mlvm::SourceManager sources;
     for (const auto* bad : {
         "mlvm 1 { block(%x:\"i32\") { %r:\"i64\" = \"machine.copy\"(%x) []; } }",
         "mlvm 1 { block(%x:\"i32\") { %r:\"i8\" = \"low.cast\"(%x) [\"kind\"=\"sext\"]; } }",
@@ -91,6 +101,7 @@ int main() { return test_main([] {
         "mlvm 1 { block(%x:\"i32\") { \"interp.guard\"(%x) [\"deopt\"=\"slow\"]; } }",
         "mlvm 1 { block() { %r:\"i32\" = \"gpu.thread_id\"() [\"axis\"=\"w\"]; } }",
         "mlvm 1 { block() { %r:\"index\" = \"index.constant\"() [\"value\"=\"-1\"]; } }",
+        "mlvm 1 { block(%x:\"i32\") { \"high.yield\"(%x) []; } }",
         "mlvm 1 { block(%c:\"i1\") { %r:\"i32\" = \"high.if\"(%c) [] region { block() { \"high.yield\"() []; } } region { block() { \"high.yield\"() []; } }; } }"}) {
         CHECK(!mlvm::parse_ir(context, sources, sources.add("invalid", bad), d)); CHECK(d.has_error()); d.clear();
     }

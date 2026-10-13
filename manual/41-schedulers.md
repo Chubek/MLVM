@@ -85,6 +85,7 @@ have normal host side effects; artifact rollback does not undo those effects.
 | Action | Inputs | Options and output |
 | --- | --- | --- |
 | `ir` | none | Exactly one of `path` or `source`; parses verified MLVM text into `mlvm` |
+| `cephyr` | none | Exactly one of `path` or `source`; lowers one C translation unit into `mlvm` (Cephyr-enabled builds only; see below) |
 | `kernel` | one `mlvm` or `firestone.dataflow` | `path` to `.bst` or `.bsp`; optional `directory` for recursive inheritance lookup, `budget` (default `10000`); returns the same artifact kind |
 | `pass` | one `mlvm` | `name`: `constant-fold`, `canonicalize`, or `dce` |
 | `convert` | one IR | `to`: a supported representation or dialect, described below |
@@ -93,11 +94,14 @@ have normal host side effects; artifact rollback does not undo those effects.
 | `text` | one printable artifact | No options; returns `text` |
 | `target` | one `mlvm` | `triple`; interpreter additionally accepts comma-separated unsigned decimal bit-pattern `arguments` |
 
-Convenience signatures are `p:ir(name, options)`,
+Convenience signatures are `p:ir(name, options)`, `p:cephyr(name, options)`,
 `p:kernel/pass/convert/verify/text/target(name, input, options)`, and
 `p:collect(name, inputs)`. File options resolve relative to the `.sched` file,
 independent of the command's working directory. For C++ `Scheduler::run`, the
-caller supplies that base directory explicitly.
+caller supplies that base directory explicitly. `p:cephyr` requires an action
+named `cephyr` in the registry; `mlvm-sched` and `mlvm --schedule` register
+Cephyr's action when built with Cephyr enabled, and loading a pipeline that
+uses it otherwise fails with an unknown-action error.
 
 ## Firestone representations
 
@@ -137,7 +141,7 @@ See [the dialect inventory](../dialects/README.md).
 
 | Target triple | Output | Implemented contract |
 | --- | --- | --- |
-| `x86_64-unknown-linux-gnu` | ELF64 object bytes | Single-block i32 arithmetic functions, up to six SysV integer parameters |
+| `x86_64-unknown-linux-gnu` | ELF64 object bytes | Single-block i32 arithmetic functions, up to six SysV integer parameters; C-dialect modules via the C backend |
 | `wasm32-unknown-unknown` | WebAssembly module bytes | i32/i64 arithmetic functions and named exports |
 | `llvmir-unknown-unknown` | LLVM IR text | i1..i64 integer SSA functions; consumer supplies the target layout |
 | `interp-unknown-unknown` | Decimal result text | One integer function; i1..i64 wrapping arithmetic, checked signed division |
@@ -145,6 +149,41 @@ See [the dialect inventory](../dialects/README.md).
 Memory, structured regions, GPU launch and interpreter deoptimization operations
 have dialect verification contracts and require host-specific lowering for these
 expression targets. Unsupported semantics produce diagnostics.
+
+## C pipelines
+
+The `cephyr` source action compiles one C translation unit per node through the
+same preprocess, parse and lower stages as the `cephyr` tool, then publishes a
+verified `mlvm` artifact holding `builtin`, `arith`, `func` and `c`-dialect
+operations. Downstream `kernel`, `pass`, `verify`, `text` and `collect` nodes
+work unchanged; C functions that lower to pure integer expressions additionally
+flow through `convert` and every `target` route. Modules using C memory,
+address, call or control operations take the x86-64 `target` route, which emits
+them through the C backend to ELF64 object bytes:
+
+```lua
+local p = require("lsched").pipeline()
+local src = p:cephyr("src", {path = "answer.c"})
+local obj = p:target("obj", src, {triple = "x86_64-unknown-linux-gnu"})
+p:text("ir", src)
+return p
+```
+
+| Option | Meaning |
+| --- | --- |
+| `path` / `source` | Exactly one: a C file relative to the `.sched` file, or inline C text |
+| `preprocessor` | `internal`, `ucpp` (default), or `system` |
+| `system_preprocessor` | Command for the `system` engine (default auto-detection) |
+| `sysroot` | Headers/runtime directory relative to the `.sched` file (default bundled sysroot; empty clears it) |
+| `includes` | Comma-separated `-I` directories relative to the `.sched` file |
+| `defines` | Comma-separated `NAME[=VALUE]` macros |
+
+Option validation happens when the pipeline loads; preprocessing, semantic and
+lowering diagnostics name the pipeline's file or inline source. Only the entry
+C file is tracked as a read dependency; headers pulled in during preprocessing
+are not. Truncated control flow, calls and other C operations have no
+expression lowering, so `convert` and non-x86 `target` routes fail explicitly
+for modules that use them. See [the Cephyr reference](../docs/CEPHYR.md).
 
 ## CLI controls
 

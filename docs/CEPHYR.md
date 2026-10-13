@@ -81,6 +81,10 @@ preprocess → cparser-iso11 AST → semantic checks → MLVM builtin/arith/func
            → optional Optilisp kernels → MLVM passes → x86-64 → ELF64
 ```
 
+The same stages are available as scheduler actions: `p:cephyr` lowers one C
+translation unit into a pipeline, and the x86-64 `p:target` route emits
+C-dialect modules through the C backend (see the [scheduler manual](../manual/41-schedulers.md#c-pipelines)).
+
 `MLVM::Cephyr` exports `cephyr/frontend.hpp`: `preprocess`, `parse`, `lower`,
 and `emit_assembly`. `lower` returns an owned, verified `mlvm::Module` borrowing
 its context. Parser types are private. Errors return `false`/`nullopt` and are
@@ -168,6 +172,29 @@ build/cephyr --emit-ir --apply-kernel=KERNEL-ID examples/answer.c
 build/cephyr -i examples/answer.c -o build/answer.mlvm
 build/cephyr -s examples/answer.c -o build/answer.s
 ```
+
+### Dialect-based target emission
+
+Translation units that lower to pure integer expressions (no parameters,
+locals, globals, calls, or control flow — `examples/answer.c` qualifies) can
+also emit through the shared dialect backends instead of the C backend:
+
+```sh
+build/cephyr --target=llvmir-unknown-unknown examples/answer.c -o build/answer.ll
+build/cephyr --target=wasm32-unknown-unknown examples/answer.c -o build/answer.wasm
+build/cephyr --target=interp-unknown-unknown examples/answer.c
+build/cephyr --target=interp-unknown-unknown --args=35 param.c
+```
+
+`--target` emission accepts one source and cannot be combined with `-E`,
+`--parse-only`, `-fsyntax-only`, `--emit-ir`, `-S`, or `-c`. Text outputs
+default to stdout; the WebAssembly binary requires `-o`. `--args` (or
+`--arguments`) supplies comma-separated interpreter arguments for the
+`interp` target only. Modules using C memory, address, call, or control
+operations fail with an explicit diagnostic naming the blocking operation;
+compile those through the C backend (`-S`/`-c`/linking) instead. The
+`x86_64-unknown-linux-gnu` triple keeps its existing assembler-selection
+meaning.
 
 ### Assembler and linker selection
 

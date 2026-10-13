@@ -38,10 +38,20 @@ bool register_builtin_dialects(Context& context, DiagnosticEngine& diagnostics) 
             const auto& s = it->second; const auto r = std::from_chars(s.data(), s.data() + s.size(), number);
             if (r.ec != std::errc{} || r.ptr != s.data() + s.size()) valid = false;
             if (valid && !op.results.empty()) {
-                auto spelling = module.context->spelling(module.value(op.results[0])->type);
+                const auto* result = module.value(op.results[0]);
+                if (!result) valid = false;
+                if (!result) {
+                    // The generic verifier will also report the malformed
+                    // result ID; avoid dereferencing it here.
+                } else {
+                auto spelling = module.context->spelling(result->type);
                 unsigned width = 0; std::from_chars(spelling.data() + 1, spelling.data() + spelling.size(), width);
+                // Narrow integer constants accept either a signed value or an
+                // unsigned bit pattern.  The upper bound is inclusive: 255
+                // is the valid all-ones bit pattern for i8, for example.
                 if (width < 64 && (number < -(std::int64_t{1} << (width - 1)) ||
-                                  (number >= 0 && static_cast<std::uint64_t>(number) >= (std::uint64_t{1} << width)))) valid = false;
+                                  (number >= 0 && static_cast<std::uint64_t>(number) > ((std::uint64_t{1} << width) - 1)))) valid = false;
+                }
             }
         }
         if (!valid) diagnostics.error("arith.constant", "constant requires a representable decimal 'value' attribute", op.location);
@@ -51,6 +61,10 @@ bool register_builtin_dialects(Context& context, DiagnosticEngine& diagnostics) 
         [](const Operation& op, const Module&, DiagnosticEngine& d) {
             if (op.regions.size() != 1 || op.regions[0].blocks.size() != 1) {
                 d.error("func.body", "builtin.func currently requires exactly one entry block", op.location); return false;
+            }
+            const auto it = op.attributes.find("result");
+            if (it != op.attributes.end() && it->second.empty()) {
+                d.error("func.result", "function result must be void or a nonempty type", op.location); return false;
             }
             return true;
         }});

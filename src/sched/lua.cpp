@@ -78,6 +78,9 @@ function lib.pipeline()
   function graph:ir(name, options)
     return self:node {name=name, action='ir', options=options}
   end
+  function graph:cephyr(name, options)
+    return self:node {name=name, action='cephyr', options=options}
+  end
   for _, action in ipairs {'kernel', 'pass', 'convert', 'verify', 'text', 'target'} do
     graph[action] = function(self, name, input, options)
       return self:node {name=name, action=action, inputs={input}, options=options}

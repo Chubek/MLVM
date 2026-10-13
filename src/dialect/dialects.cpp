@@ -46,6 +46,12 @@ bool select(const Operation& op, const Module& m, DiagnosticEngine& d) {
 }
 bool memory(const Operation& op, const Module& m, DiagnosticEngine& d) {
     if (op.operands.empty() || value_type(m, op.operands[0]) != "ptr") return fail(op, d, "memory address must have type ptr");
+    if (op.name.ends_with(".load")) {
+        if (op.results.size() != 1 || value_type(m, op.results[0]).empty()) return fail(op, d, "load requires one typed result");
+    } else if (op.name.ends_with(".store")) {
+        if (op.operands.size() != 2 || !op.results.empty() || value_type(m, op.operands[1]).empty())
+            return fail(op, d, "store requires a pointer address and typed value");
+    }
     if (auto it = op.attributes.find("alignment"); it != op.attributes.end()) {
         std::uint64_t n = 0; auto& s = it->second; auto r = std::from_chars(s.data(), s.data() + s.size(), n);
         if (r.ec != std::errc{} || r.ptr != s.data() + s.size() || !n || (n & (n - 1))) return fail(op, d, "alignment must be a positive power of two");

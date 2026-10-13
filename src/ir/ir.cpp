@@ -90,8 +90,9 @@ bool verify(const Module& module, DiagnosticEngine& diagnostics) {
             module.context->spelling(value->type).empty() || !definitions.insert(id).second)
             fail("ir.value", "invalid, missing or duplicate value definition");
     };
-    std::function<void(const Region&, std::set<ValueId>, unsigned, const Operation*)> check_region;
-    check_region = [&](const Region& region, std::set<ValueId> outer, unsigned depth, const Operation* function) {
+    std::function<void(const Region&, std::set<ValueId>, unsigned, const Operation*, const Operation*)> check_region;
+    check_region = [&](const Region& region, std::set<ValueId> outer, unsigned depth,
+                       const Operation* function, const Operation* parent) {
         if (depth > 256) { fail("ir.depth", "region nesting exceeds 256"); return; }
         for (const auto& block : region.blocks) {
             if (!block.id || !nodes.insert(block.id).second) fail("ir.node", "duplicate or invalid block ID");
@@ -125,10 +126,12 @@ bool verify(const Module& module, DiagnosticEngine& diagnostics) {
                             fail("func.return", "return type does not match function result", op.location);
                     }
                 }
+                if (op.name == "high.yield" && (!parent || parent->name != "high.if"))
+                    fail("high.yield", "yield must terminate a high.if arm", op.location);
                 // Functions are isolated; other regions may capture earlier values.
                 for (const auto& child : op.regions)
                     check_region(child, op.name == "builtin.func" ? std::set<ValueId>{} : available,
-                                 depth + 1, op.name == "builtin.func" ? &op : function);
+                                 depth + 1, op.name == "builtin.func" ? &op : function, &op);
                 for (auto result : op.results) { define(result, op.id, false); available.insert(result); }
                 if (def && def->verify && !def->verify(op, module, diagnostics)) valid = false;
                 if (op.name == "builtin.func") {
@@ -142,7 +145,7 @@ bool verify(const Module& module, DiagnosticEngine& diagnostics) {
                 fail("ir.terminator", "nested block must end in a terminator");
         }
     };
-    check_region(module.body, {}, 0, nullptr);
+    check_region(module.body, {}, 0, nullptr, nullptr);
     for (const auto& [id, value] : module.values) {
         if (!definitions.contains(id)) fail("ir.orphan", "value is not owned by any node");
         if (value.uses != uses[id]) fail("ir.use-def", "use-def chain is inconsistent");

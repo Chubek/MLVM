@@ -2,6 +2,8 @@
 #include "optimize.hpp"
 #include "tool_process.hpp"
 #include <mlvm/mlvm.hpp>
+#include <mlvm/dialect.hpp>
+#include <mlvm/target.hpp>
 #include <mlvm/object.hpp>
 #include <mlvm/codegen.hpp>
 #include <mlvm/sched.hpp>
@@ -10,6 +12,7 @@
 #endif
 #ifdef MLVM_HAS_CEPHYR
 #include <cephyr/frontend.hpp>
+#include <cephyr/sched.hpp>
 #endif
 #include <algorithm>
 #include <charconv>
@@ -82,6 +85,9 @@ void help(std::string_view name) {
     std::cout << name << " (MLVM " << version << ")\nUsage: " << name << " [options] FILE...\n"
               << "Common: --help --version --color=never @RESPONSE --\n";
     if (name == "mlvm") std::cout << "  --verify --print --passes=constant-fold,canonicalize,dce --dump-passes -o FILE\n"
+        << "  --convert-to=high|mid|low|machine|interp|llvmir|wasm|gpu\n"
+        << "  --target=x86_64-unknown-linux-gnu|wasm32-unknown-unknown|llvmir-unknown-unknown|interp-unknown-unknown\n"
+        << "  --args=35 or --arguments=1,2 (interp target only) -o FILE\n"
         << "  --schedule=FILE.sched --result=NODE --trace (or pass a .sched file directly)\n"
         << "  --blackstone-dir=DIR --kernel-file=FILE --apply-kernel=ID (repeatable)\n";
     else if (name == "mlvm-sched") std::cout << "  FILE.sched --check --dot --trace --result=NODE -o FILE\n";
@@ -94,6 +100,8 @@ void help(std::string_view name) {
     else if (name == "mlvm-objdump") std::cout << "  -d (documented x86 subset) -s (section bytes) -t (symbols) -r (relocations)\n";
     else if (name == "cephyr") std::cout << "  -E --parse-only -fsyntax-only -i/--emit-ir -s/-S -c -o FILE -I DIR -D NAME[=VALUE] -U NAME\n"
         << "  -include FILE -std=c11 -ffreestanding -target x86_64-unknown-linux-gnu -O0 -O1\n"
+        << "  --target=llvmir-unknown-unknown|wasm32-unknown-unknown|interp-unknown-unknown\n"
+        << "  --args=35 or --arguments=1,2 (interp target only)\n"
         << "  --preprocessor=internal|ucpp|system (default ucpp) --system-preprocessor=COMMAND\n"
         << "  --sysroot=DIR (default bundled libc) --no-default-sysroot -nostdinc\n"
         << "  Default: link an executable; accepts .c, .o, .a; -nostdlib -nodefaultlibs -nostartfiles\n"
@@ -146,6 +154,7 @@ struct Options {
     std::string output, entry = "_start", passes, remove, only, rename, mode, archive_command;
     std::string blackstone;
     std::string schedule, result;
+    std::string convert_to, target, emit_target, target_args;
     bool trace = false, schedule_check = false, schedule_dot = false;
     std::vector<std::string> kernel_files;
     std::vector<KernelRequest> kernel_applications;
@@ -210,8 +219,29 @@ Options options(std::string_view name, const std::vector<std::string>& args) {
             result.output = next(); continue;
         }
         if (!positional && (arg.starts_with("--target=") || (name == "cephyr" && arg == "-target"))) {
-            if (name != "mlvm-as" && name != "cephyr") throw Error(2, "target selection unsupported by this tool");
             const auto target = arg == "-target" ? next() : arg.substr(9);
+            if (name == "mlvm") {
+                auto registry = TargetRegistry::builtins();
+                if (!registry.find(target)) throw Error(2, "unsupported emission target: " + target);
+                if (!result.target.empty() && result.target != target) throw Error(2, "conflicting --target options");
+                result.target = target;
+                continue;
+            }
+            if (name == "cephyr") {
+                // Dialect-backend emission for convertible modules; the x86-64
+                // triple keeps its existing assembler-selection meaning below.
+                if (target == "llvmir-unknown-unknown" || target == "wasm32-unknown-unknown" ||
+                    target == "interp-unknown-unknown") {
+                    if (!result.emit_target.empty() && result.emit_target != target)
+                        throw Error(2, "conflicting --target options");
+                    result.emit_target = target;
+                    continue;
+                }
+                auto registry = TargetRegistry::builtins(); auto* description = registry.find(target);
+                if (!description || !description->assembler) throw Error(2, "unsupported cephyr target: " + target);
+                continue;
+            }
+            if (name != "mlvm-as") throw Error(2, "target selection unsupported by this tool");
             auto registry = TargetRegistry::builtins(); auto* description = registry.find(target);
             if (!description || !description->assembler) throw Error(2, "unsupported assembler target: " + target);
             continue;
@@ -234,6 +264,23 @@ Options options(std::string_view name, const std::vector<std::string>& args) {
             if (arg == "--verify" || arg == "--print") { result.mode = arg; continue; }
             if (arg.starts_with("--passes=")) { result.passes = arg.substr(9); continue; }
             if (arg == "--dump-passes") { result.dump = true; continue; }
+            if (arg.starts_with("--convert-to=")) {
+                const auto dialect = arg.substr(13);
+                const std::set<std::string> supported{"high", "mid", "low", "machine", "interp", "llvmir", "wasm", "gpu"};
+                if (!supported.contains(dialect)) throw Error(2, "unsupported conversion dialect: " + dialect);
+                if (!result.convert_to.empty() && result.convert_to != dialect) throw Error(2, "conflicting --convert-to options");
+                result.convert_to = dialect;
+                continue;
+            }
+        }
+        if (!positional && (name == "mlvm" || name == "cephyr")) {
+            if (arg.starts_with("--args=") || arg.starts_with("--arguments=")) {
+                const auto eq = arg.find('=');
+                const auto value = arg.substr(eq + 1);
+                if (!result.target_args.empty()) throw Error(2, "conflicting interpreter argument options");
+                result.target_args = value;
+                continue;
+            }
         }
         if (!positional && name == "mlvm-ld") {
             if (arg == "-r") { result.relocatable = true; continue; }
@@ -323,6 +370,8 @@ Options options(std::string_view name, const std::vector<std::string>& args) {
     if (name == "cephyr" && (!result.kernel_files.empty() || !result.kernel_applications.empty() || !result.blackstone.empty()) &&
         !result.mode.empty() && result.mode != "--emit-ir" && result.mode != "-S" && result.mode != "-c")
         throw Error(2, "Cephyr kernels require compilation or linking");
+    if (name == "cephyr" && !result.emit_target.empty() && !result.mode.empty())
+        throw Error(2, "--target emission cannot be combined with " + result.mode);
     return result;
 }
 void inspect(const Object& object, std::string_view tool, bool disassemble) {
@@ -391,6 +440,45 @@ bool transform(Object& object, const Options& options, bool strip, DiagnosticEng
     if (!verify_object(result, diagnostics)) return false;
     object = std::move(result); return true;
 }
+std::vector<std::uint64_t> interp_args(const std::string& text) {
+    std::vector<std::uint64_t> args;
+    if (!text.empty()) {
+        std::istringstream list(text); std::string arg;
+        while (std::getline(list, arg, ',')) {
+            if (arg.empty()) throw Error(2, "interp --args requires comma-separated unsigned decimals");
+            std::uint64_t value = 0;
+            const auto result = std::from_chars(arg.data(), arg.data() + arg.size(), value);
+            if (result.ec != std::errc{} || result.ptr != arg.data() + arg.size())
+                throw Error(2, "interp --args requires comma-separated unsigned decimals: " + arg);
+            args.push_back(value);
+        }
+    }
+    return args;
+}
+// Shared dialect-backend emission for convertible modules. Modules using
+// operations without an expression lowering (such as C memory or control
+// operations) fail with an explicit diagnostic naming the operation.
+int emit_shared_target(const Module& module, const std::string& triple, const std::string& args_text,
+                       const std::string& output, const std::vector<std::string>& inputs, DiagnosticEngine& diagnostics) {
+    if (triple == "llvmir-unknown-unknown") {
+        auto emitted = emit_llvm_ir(module, diagnostics); if (!emitted) return 1;
+        write_text(output, *emitted, inputs); return 0;
+    }
+    if (triple == "wasm32-unknown-unknown") {
+        auto bytes = emit_wasm(module, diagnostics); if (!bytes) return 1;
+        write(output, *bytes, inputs); return 0;
+    }
+    if (triple == "x86_64-unknown-linux-gnu") {
+        auto object = emit_x86_object(module, diagnostics); if (!object) return 1;
+        auto bytes = write_elf(*object, diagnostics); if (!bytes) return 1;
+        write(output, *bytes, inputs); return 0;
+    }
+    if (triple == "interp-unknown-unknown") {
+        auto value = interpret(module, interp_args(args_text), diagnostics); if (!value) return 1;
+        write_text(output, std::to_string(*value) + "\n", inputs); return 0;
+    }
+    throw Error(2, "unsupported emission target: " + triple);
+}
 int execute_tool(std::string_view name, const Options& opts, SourceManager& sources, DiagnosticEngine& diagnostics) {
     Context context; register_builtin_dialects(context, diagnostics);
     auto one = [&]() { if (opts.inputs.size() != 1) throw Error(2, "expected exactly one input file"); };
@@ -402,10 +490,16 @@ int execute_tool(std::string_view name, const Options& opts, SourceManager& sour
     };
     if (name == "mlvm-sched" || (name == "mlvm" && (!opts.schedule.empty() ||
         (opts.inputs.size() == 1 && std::filesystem::path(opts.inputs[0]).extension() == ".sched")))) {
+        if (!opts.convert_to.empty() || !opts.target.empty() || !opts.target_args.empty() || !opts.passes.empty() || !opts.mode.empty() || opts.dump)
+            throw Error(2, "--convert-to/--target/--args/--passes/--verify/--print/--dump-passes belong to direct IR mode, not --schedule");
         std::string path = opts.schedule;
         if (path.empty()) { one(); path = opts.inputs[0]; }
         else if (!opts.inputs.empty()) throw Error(2, "--schedule takes its inputs from the orchestrator; do not pass positional IR files");
-        auto registry = sched::Registry::builtins(context); auto graph = sched::load(path, registry, diagnostics);
+        auto registry = sched::Registry::builtins(context);
+#ifdef MLVM_HAS_CEPHYR
+        cephyr::register_scheduler_actions(registry, context);
+#endif
+        auto graph = sched::load(path, registry, diagnostics);
         if (!graph) return 1;
         if (opts.schedule_dot) { write_text(opts.output, graph->dot(diagnostics), {path}); return 0; }
         if (opts.schedule_check) return 0;
@@ -473,6 +567,12 @@ int execute_tool(std::string_view name, const Options& opts, SourceManager& sour
             write(opts.output, *bytes, protected_inputs()); return 0;
         }
         if (name == "mlvm") {
+            if (!opts.target_args.empty() && opts.target != "interp-unknown-unknown")
+                throw Error(2, "--args/--arguments belong to the interp target");
+            if (opts.mode == "--verify" && !opts.target.empty())
+                throw Error(2, "--verify takes no --target; verify the IR instead");
+            if (opts.mode == "--print" && !opts.target.empty())
+                throw Error(2, "--print takes no --target; emit IR or drop --print");
             auto module = parse_ir(context, sources, file, diagnostics); if (!module) return 1;
             if (!kernels(*module, opts.mode != "--verify" && opts.mode != "--print")) return 1;
             PassManager passes; passes.dump_ir = opts.dump;
@@ -487,13 +587,18 @@ int execute_tool(std::string_view name, const Options& opts, SourceManager& sour
                 }
             }
             if (!passes.run(*module, diagnostics)) return 1;
-            if (opts.mode != "--verify") write_text(opts.output, print_ir(*module), protected_inputs());
+            if (!opts.convert_to.empty() && !lower_dialect(*module, opts.convert_to, diagnostics)) return 1;
+            if (opts.mode == "--verify") return 0;
+            if (!opts.target.empty()) return emit_shared_target(*module, opts.target, opts.target_args, opts.output, protected_inputs(), diagnostics);
+            write_text(opts.output, print_ir(*module), protected_inputs());
             return 0;
         }
     }
     if (name == "cephyr") {
 #ifdef MLVM_HAS_CEPHYR
-        const bool linking = opts.mode.empty();
+        if (!opts.target_args.empty() && opts.emit_target != "interp-unknown-unknown")
+            throw Error(2, "--args/--arguments belong to the interp target");
+        const bool linking = opts.mode.empty() && opts.emit_target.empty();
         if (!linking) one();
         std::vector<Object> objects;
         std::vector<std::string> link_files;
@@ -530,6 +635,11 @@ int execute_tool(std::string_view name, const Options& opts, SourceManager& sour
         auto module = cephyr::lower(context, sources, expanded, diagnostics); if (!module) return 1;
         if (opts.mode == "-fsyntax-only") return 0;
         if (!kernels(*module, true)) return 1;
+        // Dialect-based backends for convertible modules. Modules using C
+        // memory, address, call or control operations fail here with an
+        // explicit diagnostic naming the blocking operation.
+        if (!opts.emit_target.empty())
+            return emit_shared_target(*module, opts.emit_target, opts.target_args, opts.output, protected_inputs(), diagnostics);
         if (opts.mode == "--emit-ir") { write_text(opts.output, print_ir(*module), protected_inputs()); return 0; }
         auto assembly = cephyr::emit_assembly(*module, diagnostics); if (!assembly) return 1;
         if (opts.mode == "-S") { write_text(opts.output, *assembly, protected_inputs()); return 0; }

@@ -1,4 +1,5 @@
 #include <mlvm/sched.hpp>
+#include <mlvm/c.hpp>
 #include <mlvm/dialect.hpp>
 #include <mlvm/pass.hpp>
 #include <mlvm/target.hpp>
@@ -132,8 +133,20 @@ Registry Registry::builtins(Context& context) {
             if (triple == "llvmir-unknown-unknown") { auto result = emit_llvm_ir(module, run.diagnostics); if (result) return Artifact{"text", std::move(*result)}; }
             else if (triple == "wasm32-unknown-unknown") { auto result = emit_wasm(module, run.diagnostics); if (result) return Artifact{"bytes", std::move(*result)}; }
             else if (triple == "x86_64-unknown-linux-gnu") {
-                auto object = emit_x86_object(module, run.diagnostics);
-                if (object) { auto bytes = write_elf(*object, run.diagnostics); if (bytes) return Artifact{"bytes", std::move(*bytes)}; }
+                // C-dialect modules use the C backend; expression modules use the
+                // expression emitter. Detection is syntactic; either path diagnoses
+                // unsupported input explicitly.
+                bool c_dialect = false;
+                walk(module, [&](const Operation& op) { if (op.name.starts_with("c.")) c_dialect = true; });
+                if (c_dialect) {
+                    auto assembly = emit_c_x86_64(module, run.diagnostics); if (!assembly) return {};
+                    SourceManager sources; auto file = sources.add("<sched-asm>", *assembly);
+                    auto object = assemble(*assembly, sources, file, run.diagnostics); if (!object) return {};
+                    auto bytes = write_elf(*object, run.diagnostics); if (bytes) return Artifact{"bytes", std::move(*bytes)};
+                } else {
+                    auto object = emit_x86_object(module, run.diagnostics);
+                    if (object) { auto bytes = write_elf(*object, run.diagnostics); if (bytes) return Artifact{"bytes", std::move(*bytes)}; }
+                }
             } else if (triple == "interp-unknown-unknown") {
                 auto result = interpret(module, args, run.diagnostics); if (result) return Artifact{"text", std::to_string(*result) + "\n"};
             }

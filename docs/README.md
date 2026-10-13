@@ -5,6 +5,7 @@
 - `TOOLS.md` — assembler, linker, and binutils contracts.
 - `CEPHYR.md` — Cephyr C compiler stages and conformance strategy.
 - `API.md` — public C/C++ API rules.
+- `HOW-TO-IMPLEMENT-A-DIALECT.md` — checklist and workflow for adding dialect contracts, verifiers, conversions, targets, and tests.
 - `KERNELS.md` — applying Blackstone kernels and authoring Optilisp kernels via C++ and textual IR.
 - `ROADMAP.md` — staged implementation milestones.
 

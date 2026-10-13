@@ -81,12 +81,13 @@ include(MLVMScheduler)
 if(MLVM_ENABLE_CEPHYR)
   add_library(cephyr_frontend cephyr/src/preprocess/preprocess.cpp cephyr/src/preprocess/ucpp.cpp
     cephyr/src/preprocess/system.cpp cephyr/src/parse/frontend.cpp
-    cephyr/src/sema/types.cpp cephyr/src/sema/lower.cpp cephyr/src/lower/codegen.cpp)
+    cephyr/src/sema/types.cpp cephyr/src/sema/lower.cpp cephyr/src/lower/codegen.cpp
+    cephyr/src/sched/actions.cpp)
   add_library(MLVM::Cephyr ALIAS cephyr_frontend)
   target_include_directories(cephyr_frontend PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cephyr/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-  target_link_libraries(cephyr_frontend PUBLIC MLVM::IR PRIVATE mlvm_cparser mlvm_ucpp MLVM::Codegen)
+  target_link_libraries(cephyr_frontend PUBLIC MLVM::IR MLVM::Scheduler PRIVATE mlvm_cparser mlvm_ucpp MLVM::Codegen)
   set_target_properties(cephyr_frontend PROPERTIES EXPORT_NAME Cephyr)
   mlvm_warnings(cephyr_frontend)
   install(TARGETS cephyr_frontend mlvm_cparser mlvm_ucpp EXPORT MLVMTargets)
@@ -212,6 +213,10 @@ if(MLVM_BUILD_TESTS)
     target_link_libraries(cephyr-test-frontend PRIVATE MLVM::Cephyr)
     mlvm_warnings(cephyr-test-frontend)
     add_test(NAME cephyr-frontend COMMAND cephyr-test-frontend)
+    add_executable(cephyr-test-sched cephyr/tests/sched_actions.cpp)
+    target_link_libraries(cephyr-test-sched PRIVATE MLVM::Cephyr)
+    mlvm_warnings(cephyr-test-sched)
+    add_test(NAME cephyr-sched-actions COMMAND cephyr-test-sched)
   endif()
   if(MLVM_BUILD_TOOLS)
     foreach(tool mlvm mlvm-as mlvm-sched mlvm-ld mlvm-ar mlvm-nm mlvm-objdump mlvm-objcopy
@@ -232,6 +237,8 @@ if(MLVM_BUILD_TESTS)
           ${CMAKE_CURRENT_SOURCE_DIR}/cephyr/tests/execute.py $<TARGET_FILE_DIR:cephyr>)
         add_test(NAME cephyr-driver COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/cephyr/tests/driver.py $<TARGET_FILE_DIR:cephyr>)
+        add_test(NAME cephyr-sched-cli COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/cephyr/tests/sched.py $<TARGET_FILE_DIR:cephyr>)
       endif()
       if(MLVM_ENABLE_BINUTILS)
         add_test(NAME mlvm-binutils-cli COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binutils.py

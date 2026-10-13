@@ -181,6 +181,10 @@ std::optional<Object> emit_x86_object(const Module& m, DiagnosticEngine& d) {
         auto imm = [&](std::uint32_t value) { for (unsigned i = 0; i < 4; ++i) bytes.push_back(static_cast<std::uint8_t>(value >> (8 * i))); };
         for (auto [function, block] : functions(m)) {
             if (block->arguments.size() > 6) throw std::runtime_error("x86 expression target accepts at most six i32 arguments");
+            // Report selection explicitly: every select condition is narrower than the
+            // i32-only frame, so width allocation would otherwise misdiagnose it.
+            for (const auto& op : block->operations)
+                if (opcode(op) == "select") throw std::runtime_error("x86 select requires condition lowering");
             auto start = bytes.size(); std::map<ValueId, std::uint32_t> slots;
             auto allocate = [&](ValueId id) {
                 if (width(m, id) != 32) throw std::runtime_error("x86 expression target requires i32 values");
