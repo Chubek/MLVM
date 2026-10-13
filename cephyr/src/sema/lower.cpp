@@ -327,6 +327,21 @@ class Lowering {
         if (!value.type || !value.type->is_integer() || value.type->width >= 32) return value;
         return convert(block, value, int32(), node, "integer promotion");
     }
+    // Control conditions are i32 truth values: any scalar wider than int
+    // compares against zero, and pointers compare against null. Sub-word
+    // integers promote as usual; the backend tests the full register.
+    Value truth_value(mlvm::Block& block, Value value, Node* node) {
+        if (!value || !value.type) return value;
+        if (value.type->kind == Type::Kind::Pointer) {
+            auto zero = convert(block, constant(block, 0, int32(), node), value.type, node, "condition");
+            return comparison(block, "c.ne", value, zero, node);
+        }
+        value = promote_value(block, value, node);
+        if (!value.type || (value.type->is_integer() && value.type->width == 32)) return value;
+        // NOTE: convert-to-Bool yields _Bool storage (i8); conditions need the
+        // i32 truth value, so compare directly instead.
+        return comparison(block, "c.ne", value, constant(block, 0, value.type, node), node);
+    }
 
     // ---- objects and lvalues ----
     Object lookup_object(Node* node) {
@@ -497,6 +512,7 @@ class Lowering {
     }
     Value select(mlvm::Block& block, Value condition, Node* yes, Node* no, Node* node,
                   bool logical, bool is_or, const Type* result_type = nullptr) {
+        condition = truth_value(block, condition, node);
         auto result = result_type ? result_type : int32();
         auto& op = emit(block, result->kind == Type::Kind::Void ? "c.if" : "c.select", {condition.id}, result, node);
         op.regions.resize(2);
@@ -508,7 +524,7 @@ class Lowering {
                 value = constant(body, is_or ? 1 : 0, result, node);
             else {
                 value = expression(branch == 0 ? yes : no, body);
-                if (logical) value = comparison(body, "c.ne", value, constant(body, 0, value.type, node), node);
+                if (logical) value = truth_value(body, value, node);
                 else value = convert(body, value, result, node, "conditional");
             }
             emit(body, "c.yield", value ? std::vector<mlvm::ValueId>{value.id} : std::vector<mlvm::ValueId>{}, nullptr, node);
@@ -821,7 +837,9 @@ class Lowering {
             }
             if (op == "c.shl" || op == "c.shr") {
                 left = promote_value(block, left, node);
-                right = promote_value(block, right, node);
+                // The shift amount converts to the promoted left type; the
+                // verifier and backend require matching operand types.
+                right = convert(block, promote_value(block, right, node), left.type, node, "shift amount");
                 if (integer_constant_expression(bin->right)) {
                     const auto amount = unevaluated(bin->right);
                     if (amount.valid && (amount.value < 0 || amount.value >= promoted_width(left.type)))
@@ -972,7 +990,7 @@ class Lowering {
         }
         case NK_IF_STMT: {
             auto* branch = static_cast<IfStmtASTNode*>(node);
-            auto condition = promote_value(block, expression(branch->getCondition(), block), node);
+            auto condition = truth_value(block, expression(branch->getCondition(), block), node);
             auto& op = emit(block, "c.if", {condition.id}, nullptr, node);
             op.regions.resize(2);
             for (unsigned i = 0; i < 2; ++i) {

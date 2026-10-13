@@ -55,6 +55,43 @@ with tempfile.TemporaryDirectory(prefix="cephyr-driver-") as directory:
     run("--assembler=mlvm", "--linker", "mlvm", source, helper, "-o", root / "override", env=missing)
     execute(root / "override")
 
+    # Dialect-based backends for convertible modules: pure integer-expression
+    # functions reach the shared LLVM/WebAssembly/interpreter emitters, while
+    # C memory, address, call and control operations fail explicitly.
+    pure = root / "pure.c"
+    pure.write_text("int answer(void) { return (40 + 2) * 2 - 42; }\n")
+    llvm = run("--target=llvmir-unknown-unknown", pure, env=missing)
+    assert b"define" in llvm and b"@answer" in llvm
+    run("--target=llvmir-unknown-unknown", pure, "-o", root / "pure.ll", env=missing)
+    assert (root / "pure.ll").read_bytes() == llvm
+    wasm = root / "pure.wasm"
+    run("--target=wasm32-unknown-unknown", pure, "-o", wasm, env=missing)
+    assert wasm.read_bytes()[:4] == b"\x00asm"
+    if shutil.which("node"):
+        check = subprocess.run([shutil.which("node"), "-e",
+            "const fs = require('fs'); WebAssembly.instantiate(fs.readFileSync(process.argv[1]), {})"
+            ".then(m => { if (m.instance.exports.answer() !== 42) process.exit(1); });",
+            str(wasm)], capture_output=True, timeout=30)
+        assert check.returncode == 0, check.stderr
+    assert run("--target=interp-unknown-unknown", pure, env=missing) == b"42\n"
+    framed = root / "framed.c"
+    framed.write_text("int answer(void) { int x = 40; return x + 2; }\n")
+    blocked = subprocess.run([str(bin_dir / "cephyr"), f"--sysroot={runtime}",
+                              "--target=llvmir-unknown-unknown", str(framed)],
+                             cwd=root, capture_output=True, timeout=20)
+    assert blocked.returncode == 1, (blocked.returncode, blocked.stderr)
+    assert b"c.address_of" in blocked.stderr, blocked.stderr
+    run("--target=wasm32-unknown-unknown", framed, "-o", root / "framed.wasm", status=1)
+    run("--target=llvmir-unknown-unknown", "-c", pure, status=2)
+    run("--target=llvmir-unknown-unknown", source, helper, status=2)
+    run("--target=wasm32-unknown-unknown", pure, status=2)
+    run("--target=bogus", pure, status=2)
+    run("--target=llvmir-unknown-unknown", "--args=1", pure, status=2)
+    run("--target=llvmir-unknown-unknown", "--target=wasm32-unknown-unknown", pure, status=2)
+    # The x86-64 triple keeps its assembler-selection meaning.
+    run("-target", "x86_64-unknown-linux-gnu", "-c", pure, "-o", root / "pure.o")
+    assert (root / "pure.o").read_bytes()[:4] == b"\x7fELF"
+
     # Executable names containing spaces/metacharacters are passed without a shell.
     log = root / "calls.jsonl"
     def wrapper(name, tool):

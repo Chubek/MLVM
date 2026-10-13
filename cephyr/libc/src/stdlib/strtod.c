@@ -22,12 +22,11 @@ static double salvo_strtod_core(const char *s, char **endptr, int *any){
         return v;
     }
     double intpart=0.0;
-    int digits=0, hasdot=0;
-    const char *start=p;
+    int digits=0;
     // integer part
     while(isdigit((unsigned char)*p)){ intpart=intpart*10 + (*p-'0'); p++; digits=1; }
     if(*p=='.'){
-        hasdot=1; p++;
+        p++;
         double frac=0, base=0.1;
         int fdigits=0;
         while(isdigit((unsigned char)*p)){ frac += (*p-'0')*base; base*=0.1; p++; fdigits=1; digits=1; }

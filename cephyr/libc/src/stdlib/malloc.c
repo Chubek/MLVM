@@ -67,7 +67,11 @@ malloc (size_t size)
   salvo_block *block;
 
   if (size == 0 || size > SALVO_MALLOC_MAX)
-    return NULL;
+    {
+      if (size > SALVO_MALLOC_MAX)
+        errno = ENOMEM;
+      return NULL;
+    }
   size = salvo_align_up (size);
   for (block = salvo_heap_head; block != NULL; block = block->meta.next)
     {
